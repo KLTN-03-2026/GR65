@@ -16,7 +16,6 @@ import { AdminLayout } from "./pages/admin/AdminLayout";
 import { AdminDashboard } from "./pages/admin/AdminDashboard";
 import { AccountManagement } from "./pages/admin/AccountManagement";
 import { ContentModeration } from "./pages/admin/ContentModeration";
-import { PackageManagement } from "./pages/admin/PackageManagement";
 import { AIStats } from "./pages/admin/AIStats";
 import { CandidateProfile } from "./pages/candidate/CandidateProfile";
 import { EmployerProfile } from "./pages/employer/EmployerProfile";
@@ -57,7 +56,6 @@ export const router = createBrowserRouter([
       { index: true, Component: AdminDashboard },
       { path: "accounts", Component: AccountManagement },
       { path: "content", Component: ContentModeration },
-      { path: "packages", Component: PackageManagement },
       { path: "ai-stats", Component: AIStats },
       { path: "profile", Component: AdminProfile },
     ],

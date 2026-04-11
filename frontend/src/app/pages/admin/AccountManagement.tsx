@@ -175,7 +175,7 @@ export function AccountManagement() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-50 bg-gray-50">
-                  {["Công ty / Email", "Ngành nghề", "JD đang tuyển", "Gói cước", "Trạng thái", "Hành động"].map(h => (
+                  {["Công ty / Email", "Ngành nghề", "JD đang tuyển", "Trạng thái", "Hành động"].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs text-gray-500" style={{ fontWeight: 500 }}>{h}</th>
                   ))}
                 </tr>
@@ -184,7 +184,6 @@ export function AccountManagement() {
                 {mockEmployers.map(e => {
                   const status = employerStatuses[e.id] || e.status;
                   const sb = statusBadge(status);
-                  const planColors: Record<string, string> = { Basic: "bg-gray-100 text-gray-600", Pro: "bg-indigo-100 text-indigo-600", Enterprise: "bg-violet-100 text-violet-600" };
                   return (
                     <tr key={e.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-4">
@@ -200,9 +199,6 @@ export function AccountManagement() {
                       </td>
                       <td className="px-4 py-4"><span className="text-sm text-gray-600">{e.industry}</span></td>
                       <td className="px-4 py-4"><span className="text-sm text-gray-600">{e.openJobs} bài</span></td>
-                      <td className="px-4 py-4">
-                        <span className={`text-xs px-2.5 py-1 rounded-lg ${planColors[e.plan] || planColors.Basic}`}>{e.plan}</span>
-                      </td>
                       <td className="px-4 py-4">
                         <span className={`text-xs px-2.5 py-1 rounded-lg border ${sb.class}`}>{sb.label}</span>
                       </td>

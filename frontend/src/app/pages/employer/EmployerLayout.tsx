@@ -1,3 +1,5 @@
+import { useState, useEffect } from "react";
+import axios from "axios";
 import { Outlet } from "react-router";
 import { LayoutDashboard, Briefcase, Users, GitBranch, Calendar, Building2 } from "lucide-react";
 import { DashboardLayout } from "../../components/layout/DashboardLayout";
@@ -12,14 +14,38 @@ const navItems = [
 ];
 
 export function EmployerLayout() {
+  const [company, setCompany] = useState({
+     name: "Đang tải...",
+     title: "Nhà Tuyển Dụng",
+     avatar: "E"
+  });
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if(!token) return;
+        const { data } = await axios.get('http://localhost:5000/api/profile/me', { headers: { Authorization: `Bearer ${token}` } });
+        setCompany({
+           name: data.CompanyName || data.Email || "Doanh nghiệp",
+           title: "Nhà Tuyển Dụng",
+           avatar: (data.CompanyName || data.Email || "E").charAt(0).toUpperCase()
+        });
+      } catch (err) {
+        console.log("Lỗi tải layout Doanh nghiệp", err);
+      }
+    };
+    fetchProfile();
+  },[]);
+
   return (
     <DashboardLayout
       navItems={navItems}
       role="employer"
-      userName="TechVision Vietnam"
-      userAvatar="TV"
+      userName={company.name}
+      userAvatar={company.avatar}
       userAvatarColor="#6366f1"
-      userRole="Nhà tuyển dụng • Gói Pro"
+      userRole={company.title}
       profilePath="/employer/profile"
     >
       <Outlet />

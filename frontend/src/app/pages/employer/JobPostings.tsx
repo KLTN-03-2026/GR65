@@ -1,13 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import axios from "axios";
 import {
   Plus, Edit, Trash2, Eye, Users, Clock, MapPin, DollarSign,
   Briefcase, TrendingUp, CheckCircle, XCircle, ToggleLeft, ToggleRight,
   Search, Zap, Brain, X
 } from "lucide-react";
-import { mockJobs } from "../../data/mockData";
 import { toast } from "sonner";
 
-type Job = typeof mockJobs[0];
+type Job = any;
 
 const initialForm = {
   title: "", location: "", type: "Full-time", salary: "", experience: "",
@@ -15,12 +15,41 @@ const initialForm = {
 };
 
 export function JobPostings() {
-  const [jobs, setJobs] = useState(mockJobs.filter(j => j.employerId === "e1" || j.employerId === "e2"));
+  const [jobs, setJobs] = useState<any[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [form, setForm] = useState(initialForm);
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+
+  const fetchJobs = () => {
+    axios.get('http://localhost:5000/api/jobs').then(res => {
+      const parsedJobs = res.data.map((j: any) => ({
+         id: j.Id,
+         title: j.Title,
+         companyLogo: (j.CompanyName || 'C').charAt(0),
+         companyLogoColor: '#6366f1',
+         location: j.Location || '',
+         type: j.JobType || '',
+         salary: j.SalaryRange || '',
+         experience: j.ExperienceReq || '',
+         applicants: 0,
+         aiSuggestedCount: 0,
+         views: j.Views || 0,
+         deadline: "20-10-2026",
+         status: 'active',
+         featured: false,
+         category: j.Category,
+         description: j.Description,
+         requirements: j.Requirements ? j.Requirements.split('\\n') : [],
+         benefits: j.Benefits ? j.Benefits.split(',') : [],
+         skills: j.SkillsReqJson ? JSON.parse(j.SkillsReqJson) : []
+      }));
+      setJobs(parsedJobs);
+    });
+  };
+
+  useEffect(() => { fetchJobs(); }, []);
 
   const filtered = jobs.filter(j => {
     if (query && !j.title.toLowerCase().includes(query.toLowerCase())) return false;
@@ -38,43 +67,35 @@ export function JobPostings() {
     toast.success("Đã xóa bài đăng tuyển dụng");
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingJob) {
-      setJobs(prev => prev.map(j => j.id === editingJob.id ? { ...j, title: form.title, location: form.location } : j));
-      toast.success("Đã cập nhật bài đăng");
-    } else {
-      const newJob: Job = {
-        id: `j${Date.now()}`,
-        title: form.title,
-        company: "TechVision Vietnam",
-        companyLogo: "TV",
-        companyLogoColor: "#6366f1",
-        location: form.location,
-        type: form.type,
-        salary: form.salary,
-        experience: form.experience,
-        skills: form.skills.split(",").map(s => s.trim()).filter(Boolean),
-        description: form.description,
-        requirements: form.requirements.split("\n").filter(Boolean),
-        benefits: form.benefits.split(",").map(s => s.trim()).filter(Boolean),
-        status: "active",
-        postedDate: new Date().toISOString().split("T")[0],
-        deadline: new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0],
-        applicants: 0,
-        aiSuggestedCount: 0,
-        views: 0,
-        employerId: "e1",
-        category: form.category,
-        featured: false,
-        aiMatchScore: 0,
-      };
-      setJobs(prev => [newJob, ...prev]);
-      toast.success("Đã đăng bài tuyển dụng thành công!");
+    try {
+      if (editingJob) {
+        toast.success("Chỉ hỗ trợ tạo mới trong phiên bản hiện tại");
+      } else {
+        const payload = {
+          employerId: 'E1234567-89AB-CDEF-0123-456789ABCDEF', // Test ID built from seed
+          title: form.title,
+          location: form.location,
+          type: form.type,
+          salary: form.salary,
+          experience: form.experience,
+          skills: form.skills.split(",").map(s => s.trim()).filter(Boolean),
+          description: form.description,
+          requirements: form.requirements,
+          benefits: form.benefits,
+          category: form.category
+        };
+        await axios.post('http://localhost:5000/api/jobs', payload);
+        toast.success("Đã đăng bài tuyển dụng thành công lên Hệ thống!");
+        fetchJobs(); // Cập nhật lại danh sách từ CSDL
+      }
+      setShowForm(false);
+      setEditingJob(null);
+      setForm(initialForm);
+    } catch(err) {
+      toast.error("Lỗi thao tác máy chủ");
     }
-    setShowForm(false);
-    setEditingJob(null);
-    setForm(initialForm);
   };
 
   return (

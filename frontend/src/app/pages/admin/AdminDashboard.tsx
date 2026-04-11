@@ -61,7 +61,7 @@ export function AdminDashboard() {
         {[
           { label: "Độ chính xác AI", value: `${aiAccuracy}%`, sub: `+${aiImprovement}% so với tháng trước`, color: "from-violet-600 to-purple-700" },
           { label: "CV đã xử lý bởi AI", value: mockAdminStats.aiProcessed.toLocaleString(), sub: "Bao gồm PDF, Word, OCR", color: "from-indigo-600 to-blue-700" },
-          { label: "Tổng NTD đăng ký", value: mockAdminStats.totalEmployers.toLocaleString(), sub: "892 gói Pro / 156 Enterprise", color: "from-cyan-600 to-teal-700" },
+          { label: "Tổng NTD đăng ký", value: mockAdminStats.totalEmployers.toLocaleString(), sub: "Đang hoạt động trên hệ thống", color: "from-cyan-600 to-teal-700" },
         ].map(s => (
           <div key={s.label} className={`bg-gradient-to-br ${s.color} rounded-2xl p-5 text-white`}>
             <div className="text-3xl mb-1" style={{ fontWeight: 800 }}>{s.value}</div>

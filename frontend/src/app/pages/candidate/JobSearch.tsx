@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import axios from "axios";
 import {
   Search, MapPin, DollarSign, Clock, Briefcase, Brain, Target,
   Filter, ChevronDown, Star, Eye, Zap, Building2, SlidersHorizontal,
   X, Bookmark, ArrowUpRight
 } from "lucide-react";
-import { mockJobs } from "../../data/mockData";
 import { toast } from "sonner";
 
 const categories = ["Tất cả", "Lập trình", "Thiết kế", "Marketing", "Data & AI", "DevOps", "Quản lý sản phẩm"];
@@ -13,24 +13,54 @@ const salaryRanges = ["Tất cả mức lương", "10-20 triệu", "20-35 triệ
 const types = ["Tất cả loại", "Full-time", "Part-time", "Remote", "Hybrid"];
 
 export function JobSearch() {
+  const [jobs, setJobs] = useState<any[]>([]);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Tất cả");
   const [location, setLocation] = useState("Tất cả địa điểm");
   const [salary, setSalary] = useState("Tất cả mức lương");
   const [type, setType] = useState("Tất cả loại");
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedJob, setSelectedJob] = useState<string | null>(mockJobs[0].id);
+  const [selectedJob, setSelectedJob] = useState<string | null>(null);
   const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
   const [appliedJobs, setAppliedJobs] = useState<Set<string>>(new Set());
 
-  const filtered = mockJobs.filter(j => {
+  useEffect(() => {
+    axios.get('http://localhost:5000/api/jobs').then(res => {
+      const parsedJobs = res.data.map((j: any) => ({
+         id: j.Id,
+         title: j.Title,
+         company: j.CompanyName || 'No Name CO',
+         companyLogo: (j.CompanyName || 'J').charAt(0),
+         companyLogoColor: j.CompanyLogoColor || '#4F46E5',
+         location: j.Location || '',
+         salary: j.SalaryRange || '',
+         experience: j.ExperienceReq || '',
+         type: j.JobType || '',
+         category: j.Category || 'Tất cả',
+         skills: j.SkillsReqJson ? JSON.parse(j.SkillsReqJson) : [],
+         requirements: j.Requirements ? j.Requirements.split('\\n') : ["Đang cập nhật..."],
+         benefits: j.Benefits ? j.Benefits.split('\\n') : ["Bảo hiểm", "Lương thưởng"],
+         description: j.Description || "Updating...",
+         aiMatchScore: Math.floor(Math.random() * 30) + 70, // Giả lập chờ AI Vector Module Phase 3
+         status: j.Status || 'active',
+         featured: j.IsFeatured,
+         views: j.Views || 0,
+         applicants: j.Applicants || 0,
+         deadline: "20-10-2026"
+      }));
+      setJobs(parsedJobs);
+      if(parsedJobs.length > 0) setSelectedJob(parsedJobs[0].id);
+    });
+  }, []);
+
+  const filtered = jobs.filter(j => {
     if (query && !j.title.toLowerCase().includes(query.toLowerCase()) && !j.company.toLowerCase().includes(query.toLowerCase())) return false;
     if (category !== "Tất cả" && j.category !== category) return false;
     if (location !== "Tất cả địa điểm" && !j.location.includes(location.replace("Tất cả địa điểm", ""))) return false;
     return true;
   });
 
-  const selectedJobData = mockJobs.find(j => j.id === selectedJob);
+  const selectedJobData = jobs.find(j => j.id === selectedJob);
 
   const handleApply = (jobId: string) => {
     setAppliedJobs(prev => new Set(prev).add(jobId));
@@ -46,7 +76,7 @@ export function JobSearch() {
     <div className="space-y-5">
       <div>
         <h1 className="text-gray-900">Tìm kiếm việc làm</h1>
-        <p className="text-sm text-gray-500 mt-1">AI đã phân tích hồ sơ của bạn và gợi ý {mockJobs.filter(j => j.status === "active").length} công việc phù hợp</p>
+        <p className="text-sm text-gray-500 mt-1">Hệ thống gợi ý {jobs.length} công việc phù hợp</p>
       </div>
 
       {/* Search & Filter Bar */}

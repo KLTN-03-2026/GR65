@@ -27,27 +27,6 @@ const stats = [
   { value: "4,521+", label: "Tuyển dụng thành công", icon: Award },
 ];
 
-const packages = [
-  {
-    name: "Basic", price: "990.000đ", period: "/tháng", color: "border-gray-200",
-    btnColor: "bg-gray-900 hover:bg-gray-800",
-    features: ["5 bài đăng tuyển dụng", "50 hồ sơ/tháng", "AI Matching cơ bản", "Hỗ trợ email"],
-    popular: false,
-  },
-  {
-    name: "Pro", price: "2.990.000đ", period: "/tháng", color: "border-indigo-500",
-    btnColor: "bg-indigo-600 hover:bg-indigo-700",
-    features: ["20 bài đăng tuyển dụng", "200 hồ sơ/tháng", "AI Matching nâng cao", "Pipeline quản lý", "Đặt lịch phỏng vấn", "Hỗ trợ 24/7"],
-    popular: true,
-  },
-  {
-    name: "Enterprise", price: "8.990.000đ", period: "/tháng", color: "border-purple-500",
-    btnColor: "bg-purple-600 hover:bg-purple-700",
-    features: ["Không giới hạn bài đăng", "Không giới hạn hồ sơ", "AI Matching premium", "Pipeline tùy chỉnh", "API integration", "Dedicated support"],
-    popular: false,
-  },
-];
-
 const testimonials = [
   { name: "Nguyễn Thành Đạt", role: "HR Director, TechVision Vietnam", avatar: "NĐ", color: "#6366f1", text: "AI-ATS đã giảm 70% thời gian sàng lọc hồ sơ của chúng tôi. Độ chính xác matching rất ấn tượng!", stars: 5 },
   { name: "Trần Minh Châu", role: "Talent Acquisition, GreenBank Corp", avatar: "MC", color: "#10b981", text: "Pipeline quản lý ứng viên rất trực quan. Đội tuyển dụng của chúng tôi đã tăng năng suất lên 3 lần.", stars: 5 },
@@ -61,7 +40,6 @@ export function LandingPage() {
   const faqs = [
     { q: "AI phân tích CV như thế nào?", a: "Hệ thống sử dụng NLP và Machine Learning để trích xuất thông tin từ CV (PDF, Word, ảnh), sau đó so khớp với yêu cầu JD và tính điểm phù hợp." },
     { q: "Dữ liệu của tôi có được bảo mật không?", a: "Tất cả dữ liệu được mã hóa end-to-end và lưu trữ trên hạ tầng đám mây an toàn. Chúng tôi tuân thủ GDPR và không bao giờ chia sẻ dữ liệu mà không có sự đồng ý." },
-    { q: "Có thể dùng thử miễn phí không?", a: "Có! Bạn có thể đăng ký dùng thử miễn phí 14 ngày cho gói Pro với đầy đủ tính năng, không cần thông tin thẻ tín dụng." },
     { q: "AI có cải thiện theo thời gian không?", a: "Có! Hệ thống Feedback Loop AI tự học từ hành vi của nhà tuyển dụng (accept/reject), liên tục điều chỉnh trọng số để tăng độ chính xác." },
   ];
 
@@ -77,7 +55,7 @@ export function LandingPage() {
             <span style={{ fontWeight: 700, fontSize: 20, color: "#0f172a" }}>AI<span className="text-indigo-600">Recruit</span></span>
           </div>
           <div className="hidden md:flex items-center gap-8">
-            {["Tính năng", "Giải pháp", "Bảng giá", "Blog"].map((item) => (
+            {["Tính năng", "Giải pháp", "Blog"].map((item) => (
               <a key={item} href="#" className="text-sm text-gray-600 hover:text-indigo-600 transition-colors">{item}</a>
             ))}
           </div>
@@ -262,41 +240,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-14">
-            <span className="inline-block bg-indigo-100 text-indigo-700 text-sm px-4 py-1.5 rounded-full mb-4">Bảng giá</span>
-            <h2 className="text-3xl text-gray-900 mb-4" style={{ fontWeight: 700 }}>Gói cước linh hoạt</h2>
-            <p className="text-gray-500">Chọn gói phù hợp với quy mô tuyển dụng của bạn. Dùng thử 14 ngày miễn phí.</p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            {packages.map((pkg) => (
-              <div key={pkg.name} className={`relative rounded-2xl p-6 border-2 ${pkg.color} ${pkg.popular ? "shadow-xl scale-105" : "shadow-sm"}`}>
-                {pkg.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-xs px-4 py-1 rounded-full">Phổ biến nhất</div>
-                )}
-                <h3 className="text-gray-900 mb-2">{pkg.name}</h3>
-                <div className="flex items-end gap-1 mb-6">
-                  <span className="text-2xl text-gray-900" style={{ fontWeight: 800 }}>{pkg.price}</span>
-                  <span className="text-gray-400 text-sm mb-1">{pkg.period}</span>
-                </div>
-                <ul className="space-y-2.5 mb-6">
-                  {pkg.features.map((f) => (
-                    <li key={f} className="flex items-center gap-2 text-sm text-gray-600">
-                      <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <button onClick={() => navigate("/register")} className={`w-full py-2.5 rounded-xl text-white text-sm transition-colors ${pkg.btnColor}`}>
-                  Bắt đầu {pkg.name}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+
 
       {/* Testimonials */}
       <section className="py-20 bg-slate-50">
@@ -377,7 +321,7 @@ export function LandingPage() {
             <p className="text-sm text-slate-400 leading-relaxed">Hệ thống ATS tích hợp AI hàng đầu Việt Nam</p>
           </div>
           {[
-            { title: "Sản phẩm", links: ["Tính năng AI", "Bảng giá", "API Docs", "Changelog"] },
+            { title: "Sản phẩm", links: ["Tính năng AI", "API Docs", "Changelog"] },
             { title: "Công ty", links: ["Về chúng tôi", "Blog", "Tuyển dụng", "Press kit"] },
             { title: "Hỗ trợ", links: ["Trung tâm trợ giúp", "Liên hệ", "Privacy Policy", "Terms of Service"] },
           ].map((col) => (

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import axios from "axios";
 import {
   Upload, FileText, Brain, Trash2, Star, Eye, Download,
   CheckCircle, AlertCircle, Clock, File, ImageIcon, RefreshCw, Plus
@@ -12,15 +13,21 @@ export function CVManager() {
   const [parsing, setParsing] = useState<string | null>(null);
   const [selectedCV, setSelectedCV] = useState<string | null>(null);
 
-  const handleUpload = async () => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = async (file: File) => {
+    const formData = new FormData();
+    formData.append('cv', file);
+
+    const newCVId = `cv_${Date.now()}`;
     const newCV = {
-      id: `cv${Date.now()}`,
-      name: "CV_NguyenMinhTri_New.pdf",
-      candidateId: "c1",
+      id: newCVId,
+      name: file.name,
+      candidateId: "user-id", // lấy theo token
       uploadDate: new Date().toISOString().split("T")[0],
       lastModified: new Date().toISOString().split("T")[0],
-      size: "1.6 MB",
-      format: "PDF",
+      size: (file.size / 1024 / 1024).toFixed(2) + " MB",
+      format: file.name.split('.').pop()?.toUpperCase() || "UNK",
       isDefault: false,
       aiParsed: false,
       aiScore: 0,
@@ -28,15 +35,42 @@ export function CVManager() {
       extractedInfo: { experience: "", education: "", languages: [] },
     };
     setCvs(prev => [...prev, newCV]);
-    setParsing(newCV.id);
-    toast.info("Đang tải lên và phân tích CV...");
-    await new Promise(r => setTimeout(r, 2500));
-    setCvs(prev => prev.map(cv => cv.id === newCV.id
-      ? { ...cv, aiParsed: true, aiScore: 87, skills: ["React", "TypeScript", "Node.js"] }
-      : cv
-    ));
-    setParsing(null);
-    toast.success("CV đã được phân tích thành công! AI Score: 87%");
+    setParsing(newCVId);
+    
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.post('http://localhost:5000/api/cv/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      toast.success(res.data.message);
+      // Giả lập AI update sau khi load thành công
+      setCvs(prev => prev.map(cv => cv.id === newCVId
+        ? { ...cv, aiParsed: true, aiScore: 87, skills: ["React", "AI", "Node.js"] }
+        : cv
+      ));
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Lỗi tải lên CV (không có token)");
+      setCvs(prev => prev.filter(cv => cv.id !== newCVId));
+    } finally {
+      setParsing(null);
+    }
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault(); 
+    setDragOver(false); 
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleUpload(e.dataTransfer.files[0]);
+    }
+  };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleUpload(e.target.files[0]);
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -65,7 +99,7 @@ export function CVManager() {
           <h1 className="text-gray-900">Quản lý CV</h1>
           <p className="text-sm text-gray-500 mt-1">Lưu và quản lý nhiều bản CV cho từng vị trí ứng tuyển</p>
         </div>
-        <button onClick={handleUpload} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm transition-colors">
+        <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm transition-colors">
           <Plus className="w-4 h-4" /> Thêm CV mới
         </button>
       </div>
@@ -92,10 +126,11 @@ export function CVManager() {
           <div
             onDragOver={e => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
-            onDrop={e => { e.preventDefault(); setDragOver(false); handleUpload(); }}
-            onClick={handleUpload}
+            onDrop={onDrop}
+            onClick={() => fileInputRef.current?.click()}
             className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${dragOver ? "border-indigo-400 bg-indigo-50" : "border-gray-200 hover:border-indigo-300 hover:bg-gray-50"}`}
           >
+            <input type="file" className="hidden" ref={fileInputRef} onChange={onFileChange} accept=".pdf,.doc,.docx,.jpg,.png" />
             <Upload className={`w-8 h-8 mx-auto mb-3 ${dragOver ? "text-indigo-500" : "text-gray-300"}`} />
             <p className="text-sm text-gray-600 mb-1" style={{ fontWeight: 500 }}>Kéo & thả file vào đây</p>
             <p className="text-xs text-gray-400">Hỗ trợ PDF, DOCX, JPG, PNG — Tối đa 10MB</p>

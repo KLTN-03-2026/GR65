@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import axios from "axios";
 import {
   User, Mail, Phone, MapPin, Briefcase, GraduationCap, Link2, Lock,
   Save, Camera, Plus, X, CheckCircle, DollarSign, Clock, Github,
@@ -28,35 +29,35 @@ export function CandidateProfile() {
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
   const [profile, setProfile] = useState({
-    name: "Nguyễn Minh Trí",
-    email: "tri.nguyen@email.com",
-    phone: "0901234567",
-    dob: "1994-05-15",
-    gender: "male",
-    location: "TP. Hồ Chí Minh",
-    summary: "Senior Frontend Developer với 5 năm kinh nghiệm xây dựng các ứng dụng web hiệu suất cao. Đam mê với React ecosystem và kiến trúc micro-frontend.",
-    avatar: "NT",
+    name: "",
+    email: "",
+    phone: "",
+    dob: "",
+    gender: "",
+    location: "",
+    summary: "",
+    avatar: "U",
     avatarColor: "#6366f1",
   });
 
   const [career, setCareer] = useState({
-    title: "Senior Frontend Developer",
-    experienceYears: "5",
-    salaryMin: "30",
-    salaryMax: "45",
+    title: "",
+    experienceYears: "0",
+    salaryMin: "",
+    salaryMax: "",
     availability: "immediate",
     workType: "hybrid",
-    skills: ["React", "TypeScript", "Node.js", "GraphQL", "AWS"],
+    skills: [] as string[],
   });
 
   const [education, setEducation] = useState({
-    school: "Đại học Bách Khoa TP.HCM",
-    major: "Công nghệ Thông tin",
-    degree: "Cử nhân",
-    graduationYear: "2016",
-    portfolio: "https://portfolio.nguyen.dev",
-    linkedin: "https://linkedin.com/in/nguyenminhtri",
-    github: "https://github.com/nguyenminhtri",
+    school: "",
+    major: "",
+    degree: "",
+    graduationYear: "",
+    portfolio: "",
+    linkedin: "",
+    github: "",
     website: "",
   });
 
@@ -66,11 +67,64 @@ export function CandidateProfile() {
     confirmPassword: "",
   });
 
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if(!token) return;
+        const { data } = await axios.get('http://localhost:5000/api/profile/me', { headers: { Authorization: `Bearer ${token}` } });
+        
+        setProfile(p => ({
+          ...p,
+          email: data.Email,
+          name: data.FullName || p.name,
+          phone: data.Phone || '',
+          location: data.Location || '',
+          avatar: (data.FullName || data.Email || 'U').charAt(0).toUpperCase(),
+        }));
+        setCareer(c => ({
+          ...c,
+          title: data.Title || '',
+          experienceYears: data.ExperienceYears || '0',
+          skills: data.SkillsJson ? JSON.parse(data.SkillsJson) : [],
+          availability: data.Availability || 'immediate',
+        }));
+        if (data.ExpectedSalary) {
+          const splits = data.ExpectedSalary.split('-');
+          setCareer(c => ({...c, salaryMin: splits[0] || '10', salaryMax: splits[1] || '20'}));
+        }
+        if (data.Education) {
+           const parsedEdu = JSON.parse(data.Education);
+           setEducation(e => ({...e, ...parsedEdu}));
+        }
+      } catch (err) {
+        console.error("Lỗi đồng bộ hồ sơ máy chủ", err);
+      }
+    };
+    fetchProfile();
+  }, []);
+
   const handleSave = async () => {
     setSaving(true);
-    await new Promise(r => setTimeout(r, 1200));
-    setSaving(false);
-    toast.success("Cập nhật hồ sơ thành công!");
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put('http://localhost:5000/api/profile/me/candidate', {
+        FullName: profile.name,
+        Phone: profile.phone,
+        Title: career.title,
+        Location: profile.location,
+        SkillsJson: JSON.stringify(career.skills),
+        ExperienceYears: career.experienceYears,
+        ExpectedSalary: `${career.salaryMin}-${career.salaryMax}`,
+        Availability: career.availability,
+        Education: JSON.stringify(education)
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success("Cập nhật hồ sơ thành công vào Hệ thống!");
+    } catch(err) {
+      toast.error("Lỗi cập nhật máy chủ thất bại.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const addSkill = (skill: string) => {
@@ -136,6 +190,20 @@ export function CandidateProfile() {
           <span className="text-sm text-indigo-700" style={{ fontWeight: 600 }}>AI Score: 94%</span>
         </div>
       </div>
+
+      {completionPct < 100 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <h4 className="text-sm font-semibold text-amber-800">Hồ sơ của bạn đang thiếu thông tin ({completionPct}%)</h4>
+              <p className="text-xs text-amber-700 mt-1">
+                Chào bạn! Để nền tảng AI có thể đánh giá và đề xuất việc làm chuẩn xác nhất, bạn vui lòng điền các Trường còn trống như Kỹ năng, Học vấn, và Tóm tắt kinh nghiệm làm việc nhé.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-4 gap-6">
         {/* Left: Profile card + Completion */}

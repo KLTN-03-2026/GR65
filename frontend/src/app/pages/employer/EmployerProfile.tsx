@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import axios from "axios";
 import {
   Building2, Mail, Phone, MapPin, Globe, Linkedin, Twitter, Facebook,
   Lock, Save, Camera, Users, Briefcase, FileText, Eye, EyeOff,
@@ -29,33 +30,32 @@ export function EmployerProfile() {
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
   const [company, setCompany] = useState({
-    name: "TechVision Vietnam",
-    taxCode: "0123456789",
+    name: "",
+    taxCode: "",
     industry: "Công nghệ thông tin",
-    size: "200-500 nhân viên",
-    founded: "2015",
-    location: "TP. Hồ Chí Minh",
-    address: "123 Nguyễn Huệ, Q.1, TP.HCM",
-    website: "https://www.techvision.vn",
-    description: "TechVision Vietnam là công ty công nghệ hàng đầu Việt Nam, chuyên phát triển các giải pháp phần mềm doanh nghiệp và SaaS. Chúng tôi có đội ngũ hơn 300 kỹ sư tài năng và khách hàng tại 15+ quốc gia.",
-    logo: "TV",
+    size: "1-10 nhân viên",
+    founded: "",
+    location: "",
+    address: "",
+    website: "",
+    description: "",
+    logo: "C",
     logoColor: "#6366f1",
-    plan: "Pro",
-    benefits: "Bảo hiểm sức khỏe cao cấp, Remote friendly, Team building hàng tháng, Budget học tập 5 triệu/năm",
+    benefits: "",
   });
 
   const [contact, setContact] = useState({
-    hrName: "Nguyễn Thị Hoa",
-    hrEmail: "hr@techvision.vn",
-    hrPhone: "028-3822-1234",
-    hrTitle: "HR Manager",
-    contactEmail: "contact@techvision.vn",
-    contactPhone: "028-3822-5678",
+    hrName: "",
+    hrEmail: "",
+    hrPhone: "",
+    hrTitle: "",
+    contactEmail: "",
+    contactPhone: "",
   });
 
   const [social, setSocial] = useState({
-    linkedin: "https://linkedin.com/company/techvision-vn",
-    facebook: "https://facebook.com/techvisionvn",
+    linkedin: "",
+    facebook: "",
     twitter: "",
     youtube: "",
     otherLink: "",
@@ -67,11 +67,48 @@ export function EmployerProfile() {
     confirmPassword: "",
   });
 
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if(!token) return;
+        const { data } = await axios.get('http://localhost:5000/api/profile/me', { headers: { Authorization: `Bearer ${token}` } });
+        
+        setCompany(c => ({
+          ...c,
+          name: data.CompanyName || c.name,
+          industry: data.Industry || 'Công nghệ thông tin',
+          size: data.Size || '1-10 nhân viên',
+          location: data.Location || '',
+          website: data.Website || '',
+          description: data.Description || '',
+          logo: (data.CompanyName || 'E').charAt(0).toUpperCase(),
+        }));
+      } catch (err) {
+        console.error("Lỗi đồng bộ hồ sơ máy chủ", err);
+      }
+    };
+    fetchProfile();
+  }, []);
+
   const handleSave = async () => {
     setSaving(true);
-    await new Promise(r => setTimeout(r, 1200));
-    setSaving(false);
-    toast.success("Cập nhật hồ sơ công ty thành công!");
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put('http://localhost:5000/api/profile/me/employer', {
+        CompanyName: company.name,
+        Industry: company.industry,
+        Size: company.size,
+        Location: company.location,
+        Website: company.website,
+        Description: company.description,
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success("Cập nhật hồ sơ công ty thành công vào Hệ thống!");
+    } catch(err) {
+      toast.error("Lỗi cập nhật máy chủ thất bại.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleChangePassword = async () => {
@@ -101,13 +138,6 @@ export function EmployerProfile() {
     { key: "security", label: "Bảo mật", icon: Shield },
   ];
 
-  const planColors: Record<string, { bg: string; text: string; border: string }> = {
-    Basic: { bg: "bg-gray-50", text: "text-gray-600", border: "border-gray-200" },
-    Pro: { bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
-    Enterprise: { bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-200" },
-  };
-  const planColor = planColors[company.plan] || planColors.Basic;
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -116,11 +146,22 @@ export function EmployerProfile() {
           <h1 className="text-gray-900">Hồ sơ công ty</h1>
           <p className="text-sm text-gray-500 mt-1">Thông tin chính xác giúp thu hút ứng viên chất lượng hơn</p>
         </div>
-        <div className={`flex items-center gap-2 border rounded-xl px-3 py-2 ${planColor.bg} ${planColor.border}`}>
-          <Briefcase className={`w-4 h-4 ${planColor.text}`} />
-          <span className={`text-sm ${planColor.text}`} style={{ fontWeight: 600 }}>Gói {company.plan}</span>
-        </div>
       </div>
+
+      {/* Suggestion Banner */}
+      {(!company.name || !company.description || !company.location) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <h4 className="text-sm font-semibold text-amber-800">Hoàn thiện thông tin Tuyển dụng</h4>
+              <p className="text-xs text-amber-700 mt-1">
+                Doanh nghiệp của bạn chưa điền đủ các thông tin quan trọng. Việc thêm Logo, Giới thiệu công ty và Phúc lợi sẽ tăng mức độ tin cậy và thu hút thêm được nhiều ứng viên tiềm năng nộp đơn!
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-4 gap-6">
         {/* Left: Company card */}
@@ -139,9 +180,6 @@ export function EmployerProfile() {
             </div>
             <div className="text-gray-900 text-sm mb-0.5" style={{ fontWeight: 700 }}>{company.name}</div>
             <div className="text-xs text-gray-500 mb-3">{company.industry}</div>
-            <div className={`text-xs px-2.5 py-1 rounded-full border ${planColor.bg} ${planColor.text} ${planColor.border}`} style={{ fontWeight: 600 }}>
-              Gói {company.plan}
-            </div>
 
             <div className="w-full mt-4 pt-4 border-t border-gray-100 space-y-2 text-left">
               {[
