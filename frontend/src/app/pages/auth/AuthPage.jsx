@@ -43,22 +43,88 @@ export function AuthPage() {
     setMode("login");
   }, [location.pathname]);
 
+const API_URL = "http://localhost:5000";
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    setLoading(false);
-    if (mode === "forgot") {
-      setEmailSent(true);
-      return;
-    }
-    if (mode === "login") {
-      toast.success("Đăng nhập thành công!");
-      if (role === "candidate") navigate("/candidate");else
-      if (role === "employer") navigate("/employer");
-    } else {
-      toast.success("Đăng ký thành công! Vui lòng kiểm tra email xác thực.");
-      setMode("login");
+
+    try {
+      if (mode === "forgot") {
+        // Chưa implement - chỉ hiển thị thông báo
+        await new Promise((r) => setTimeout(r, 800));
+        setEmailSent(true);
+        return;
+      }
+
+      if (mode === "login") {
+        // ── GỌI API ĐĂNG NHẬP ──
+        const res = await fetch(`${API_URL}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: form.email, password: form.password })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          toast.error(data.message || "Đăng nhập thất bại!");
+          return;
+        }
+
+        // Lưu token và thông tin user vào localStorage
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
+
+        toast.success("Đăng nhập thành công!");
+
+        // Điều hướng theo Role (Admin vào /admin dù chọn tab nào)
+        const serverRole = data.user.role?.toLowerCase();
+        if (serverRole === "admin") {
+          navigate("/admin");
+        } else if (serverRole === "candidate") {
+          navigate("/candidate");
+        } else if (serverRole === "employer") {
+          navigate("/employer");
+        }
+
+      } else if (mode === "register") {
+        // ── GỌI API ĐĂNG KÝ ──
+        const body = {
+          email: form.email,
+          password: form.password,
+          role,
+          fullName: role === "candidate" ? form.name : undefined,
+          companyName: role === "employer" ? form.company : undefined,
+          phone: form.phone || undefined,
+        };
+
+        if (form.password !== form.confirm) {
+          toast.error("Mật khẩu xác nhận không khớp!");
+          return;
+        }
+
+        const res = await fetch(`${API_URL}/api/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          toast.error(data.message || "Đăng ký thất bại!");
+          return;
+        }
+
+        toast.success("Đăng ký thành công! Vui lòng đăng nhập.");
+        setMode("login");
+        setForm((f) => ({ ...f, password: "", confirm: "" }));
+      }
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Không thể kết nối đến máy chủ. Vui lòng thử lại.");
+    } finally {
+      setLoading(false);
     }
   };
 

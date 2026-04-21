@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   User, Mail, Phone, MapPin, Briefcase, GraduationCap, Link2, Lock,
   Save, Camera, Plus, X, CheckCircle, DollarSign, Clock, Github,
-  Linkedin, Globe, Eye, EyeOff, Sparkles, Shield, AlertCircle } from
+  Linkedin, Globe, Eye, EyeOff, Sparkles, Shield, AlertCircle, Loader2 } from
 "lucide-react";
 import { toast } from "sonner";
+
+const API_URL = "http://localhost:5000";
 
 const SKILLS_SUGGESTIONS = [
 "React", "Vue.js", "Angular", "TypeScript", "JavaScript", "Node.js",
@@ -21,6 +23,7 @@ const SKILLS_SUGGESTIONS = [
 export function CandidateProfile() {
   const [activeTab, setActiveTab] = useState("personal");
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [showSkillInput, setShowSkillInput] = useState(false);
   const [skillInput, setSkillInput] = useState("");
   const [showCurrentPass, setShowCurrentPass] = useState(false);
@@ -28,35 +31,35 @@ export function CandidateProfile() {
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
   const [profile, setProfile] = useState({
-    name: "Nguyễn Minh Trí",
-    email: "tri.nguyen@email.com",
-    phone: "0901234567",
-    dob: "1994-05-15",
+    name: "",
+    email: "",
+    phone: "",
+    dob: "",
     gender: "male",
-    location: "TP. Hồ Chí Minh",
-    summary: "Senior Frontend Developer với 5 năm kinh nghiệm xây dựng các ứng dụng web hiệu suất cao. Đam mê với React ecosystem và kiến trúc micro-frontend.",
-    avatar: "NT",
+    location: "",
+    summary: "",
+    avatar: "",
     avatarColor: "#6366f1"
   });
 
   const [career, setCareer] = useState({
-    title: "Senior Frontend Developer",
-    experienceYears: "5",
-    salaryMin: "30",
-    salaryMax: "45",
+    title: "",
+    experienceYears: "0",
+    salaryMin: "",
+    salaryMax: "",
     availability: "immediate",
     workType: "hybrid",
-    skills: ["React", "TypeScript", "Node.js", "GraphQL", "AWS"]
+    skills: []
   });
 
   const [education, setEducation] = useState({
-    school: "Đại học Bách Khoa TP.HCM",
-    major: "Công nghệ Thông tin",
-    degree: "Cử nhân",
-    graduationYear: "2016",
-    portfolio: "https://portfolio.nguyen.dev",
-    linkedin: "https://linkedin.com/in/nguyenminhtri",
-    github: "https://github.com/nguyenminhtri",
+    school: "",
+    major: "",
+    degree: "",
+    graduationYear: "",
+    portfolio: "",
+    linkedin: "",
+    github: "",
     website: ""
   });
 
@@ -66,11 +69,112 @@ export function CandidateProfile() {
     confirmPassword: ""
   });
 
+  // ── Lấy dữ liệu hồ sơ từ API khi component mount ──
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) { setLoading(false); return; }
+
+      try {
+        const res = await fetch(`${API_URL}/api/profile/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error("Không thể tải hồ sơ");
+        const data = await res.json();
+        const p = data.profile;
+
+        // Điền dữ liệu cơ bản (từ đăng ký/đăng nhập)
+        setProfile((prev) => ({
+          ...prev,
+          name: p.name || "",
+          email: p.email || "",
+          phone: p.phone || "",
+          location: p.location || "",
+          summary: p.summary || "",
+          avatar: (p.name || "").slice(0, 2).toUpperCase() || "NT",
+        }));
+
+        // Điền dữ liệu nghề nghiệp
+        setCareer((prev) => ({
+          ...prev,
+          title: p.title || "",
+          experienceYears: p.experienceYears || "0",
+          availability: p.availability || "immediate",
+          skills: Array.isArray(p.skills) ? p.skills : [],
+          salaryMin: p.expectedSalary ? p.expectedSalary.split("-")[0]?.trim() : "",
+          salaryMax: p.expectedSalary ? p.expectedSalary.split("-")[1]?.trim() : "",
+        }));
+
+        // Điền dữ liệu học vấn (nếu có)
+        if (p.education) {
+          try {
+            const eduParsed = JSON.parse(p.education);
+            setEducation((prev) => ({ ...prev, ...eduParsed }));
+          } catch {
+            // education là plain text, đặt vào school
+            setEducation((prev) => ({ ...prev, school: p.education }));
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        toast.error("Không thể tải dữ liệu hồ sơ");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, []);
+
   const handleSave = async () => {
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    setSaving(false);
-    toast.success("Cập nhật hồ sơ thành công!");
+    const token = localStorage.getItem("token");
+    try {
+      const expectedSalary = career.salaryMin && career.salaryMax
+        ? `${career.salaryMin} - ${career.salaryMax}`
+        : career.salaryMin || career.salaryMax || "";
+
+      const educationJson = JSON.stringify({
+        school: education.school,
+        major: education.major,
+        degree: education.degree,
+        graduationYear: education.graduationYear,
+        portfolio: education.portfolio,
+        linkedin: education.linkedin,
+        github: education.github,
+        website: education.website,
+      });
+
+      const res = await fetch(`${API_URL}/api/profile/me`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: profile.name,
+          phone: profile.phone,
+          location: profile.location,
+          title: career.title,
+          experienceYears: career.experienceYears,
+          skills: career.skills,
+          expectedSalary,
+          availability: career.availability,
+          education: educationJson,
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      toast.success("Cập nhật hồ sơ thành công!");
+      // Thông báo để sidebar cập nhật tên & chức danh ngay lập tức
+      window.dispatchEvent(new CustomEvent("profile:updated", {
+        detail: { name: profile.name, title: career.title }
+      }));
+    } catch (err) {
+      toast.error(err.message || "Cập nhật thất bại!");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const addSkill = (skill) => {
@@ -100,10 +204,28 @@ export function CandidateProfile() {
       return;
     }
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 1000));
-    setSaving(false);
-    setSecurity({ currentPassword: "", newPassword: "", confirmPassword: "" });
-    toast.success("Đổi mật khẩu thành công!");
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`${API_URL}/api/profile/change-password`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          currentPassword: security.currentPassword,
+          newPassword: security.newPassword
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      setSecurity({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      toast.success("Đổi mật khẩu thành công!");
+    } catch (err) {
+      toast.error(err.message || "Đổi mật khẩu thất bại!");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const tabs = [
@@ -122,6 +244,15 @@ export function CandidateProfile() {
   { label: "Portfolio/Liên kết", done: !!education.portfolio || !!education.linkedin }];
 
   const completionPct = Math.round(completionItems.filter((i) => i.done).length / completionItems.length * 100);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+        <span className="ml-3 text-gray-500 text-sm">Đang tải hồ sơ...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import api from "../../../lib/api";
 import {
   Building2, Mail, Phone, MapPin, Globe, Linkedin, Twitter, Facebook,
   Lock, Save, Camera, Users, Eye, EyeOff,
-  Shield, AlertCircle, CheckCircle, Link2 } from
-"lucide-react";
+  Shield, AlertCircle, CheckCircle, Link2 } from "lucide-react";
 import { toast } from "sonner";
 
 
@@ -24,42 +24,86 @@ const COMPANY_SIZES = [
 export function EmployerProfile() {
   const [activeTab, setActiveTab] = useState("company");
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [showCurrentPass, setShowCurrentPass] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
   const [company, setCompany] = useState({
-    name: "TechVision Vietnam",
-    taxCode: "0123456789",
+    name: "",
+    taxCode: "",
     industry: "Công nghệ thông tin",
-    size: "200-500 nhân viên",
-    founded: "2015",
-    location: "TP. Hồ Chí Minh",
-    address: "123 Nguyễn Huệ, Q.1, TP.HCM",
-    website: "https://www.techvision.vn",
-    description: "TechVision Vietnam là công ty công nghệ hàng đầu Việt Nam, chuyên phát triển các giải pháp phần mềm doanh nghiệp và SaaS. Chúng tôi có đội ngũ hơn 300 kỹ sư tài năng và khách hàng tại 15+ quốc gia.",
+    size: "1-10 nhân viên",
+    founded: "",
+    location: "",
+    address: "",
+    website: "",
+    description: "",
     logo: "TV",
     logoColor: "#6366f1",
-
-    benefits: "Bảo hiểm sức khỏe cao cấp, Remote friendly, Team building hàng tháng, Budget học tập 5 triệu/năm"
+    benefits: ""
   });
 
   const [contact, setContact] = useState({
-    hrName: "Nguyễn Thị Hoa",
-    hrEmail: "hr@techvision.vn",
-    hrPhone: "028-3822-1234",
+    contactName: "",
+    contactEmail: "",
+    hrPhone: "",
     hrTitle: "HR Manager",
-    contactEmail: "contact@techvision.vn",
-    contactPhone: "028-3822-5678"
   });
 
   const [social, setSocial] = useState({
-    linkedin: "https://linkedin.com/company/techvision-vn",
-    facebook: "https://facebook.com/techvisionvn",
+    linkedin: "",
+    facebook: "",
     twitter: "",
     youtube: "",
     otherLink: ""
   });
+
+  const [stats, setStats] = useState({
+    activeJobs: 0,
+    totalApps: 0,
+    hired: 0
+  });
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/api/profile/me'),
+      api.get('/api/jobs/employer/me'),
+      api.get('/api/applications/employer/me')
+    ]).then(([resProfile, resJobs, resApps]) => {
+        const p = resProfile.data?.profile || {};
+        setCompany(prev => ({
+          ...prev,
+          name: p.companyName || "",
+          industry: p.industry || "Công nghệ thông tin",
+          size: p.size || "1-10 nhân viên",
+          location: p.location || "",
+          website: p.website || "",
+          description: p.description || "",
+        }));
+        setContact(prev => ({
+          ...prev,
+          contactName: p.contactName || "",
+          hrPhone: p.phone || "",
+          contactEmail: p.email || ""
+        }));
+
+        const jobs = resJobs.data?.jobs || [];
+        const apps = resApps.data || [];
+        setStats({
+          activeJobs: jobs.filter(j => j.status === 'active').length,
+          totalApps: apps.length,
+          hired: apps.filter(a => a.stage === 'offer').length
+        });
+
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        toast.error("Không thể tải thông tin hồ sơ");
+        setLoading(false);
+      });
+  }, []);
 
   const [security, setSecurity] = useState({
     currentPassword: "",
@@ -69,9 +113,22 @@ export function EmployerProfile() {
 
   const handleSave = async () => {
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 1200));
+    try {
+      await api.put('/api/profile/me', {
+        companyName: company.name,
+        phone: contact.hrPhone,
+        contactName: contact.contactName,
+        industry: company.industry,
+        size: company.size,
+        location: company.location,
+        website: company.website,
+        description: company.description
+      });
+      toast.success("Cập nhật hồ sơ công ty thành công!");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Lỗi khi lưu hồ sơ!");
+    }
     setSaving(false);
-    toast.success("Cập nhật hồ sơ công ty thành công!");
   };
 
   const handleChangePassword = async () => {
@@ -88,11 +145,20 @@ export function EmployerProfile() {
       return;
     }
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 1000));
+    try {
+      await api.put('/api/profile/change-password', {
+        currentPassword: security.currentPassword,
+        newPassword: security.newPassword
+      });
+      setSecurity({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      toast.success("Đổi mật khẩu thành công!");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Đổi mật khẩu thất bại!");
+    }
     setSaving(false);
-    setSecurity({ currentPassword: "", newPassword: "", confirmPassword: "" });
-    toast.success("Đổi mật khẩu thành công!");
   };
+
+  if (loading) return <div className="text-center py-10">Đang tải hồ sơ...</div>;
 
   const tabs = [
   { key: "company", label: "Thông tin công ty", icon: Building2 },
@@ -151,10 +217,9 @@ export function EmployerProfile() {
             <h3 className="text-sm text-gray-900 mb-3" style={{ fontWeight: 600 }}>Thống kê tài khoản</h3>
             <div className="space-y-3">
               {[
-              { label: "Bài đăng đang active", value: "8" },
-              { label: "Tổng ứng viên", value: "24" },
-              { label: "Tuyển thành công", value: "14" },
-              { label: "Credits còn lại", value: "150" }].
+              { label: "Bài đăng đang active", value: stats.activeJobs },
+              { label: "Tổng ứng viên", value: stats.totalApps },
+              { label: "Tuyển thành công", value: stats.hired }].
               map(({ label, value }) =>
               <div key={label} className="flex items-center justify-between text-xs">
                   <span className="text-gray-500">{label}</span>
@@ -327,8 +392,8 @@ export function EmployerProfile() {
                       <div>
                         <label className="block text-xs text-gray-500 mb-1.5" style={{ fontWeight: 500 }}>Họ và tên HR *</label>
                         <input
-                        value={contact.hrName}
-                        onChange={(e) => setContact((p) => ({ ...p, hrName: e.target.value }))}
+                        value={contact.contactName}
+                        onChange={(e) => setContact((p) => ({ ...p, contactName: e.target.value }))}
                         className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
                         placeholder="Nguyễn Thị Hoa" />
                       
@@ -347,8 +412,8 @@ export function EmployerProfile() {
                         <div className="relative">
                           <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                           <input
-                          value={contact.hrEmail}
-                          onChange={(e) => setContact((p) => ({ ...p, hrEmail: e.target.value }))}
+                          value={contact.contactEmail}
+                          onChange={(e) => setContact((p) => ({ ...p, contactEmail: e.target.value }))}
                           className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
                           placeholder="hr@company.com"
                           type="email" />

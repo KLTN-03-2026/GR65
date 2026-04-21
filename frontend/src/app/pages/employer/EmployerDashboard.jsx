@@ -1,34 +1,55 @@
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
   Users, Briefcase, Brain, TrendingUp, Eye, Star, Clock,
   ChevronRight, Zap, Target, ArrowUpRight, CheckCircle, AlertCircle,
-  BarChart3, Plus } from
-"lucide-react";
-import { mockApplications, mockJobs, mockCandidates } from "../../data/mockData";
+  BarChart3, Plus, User 
+} from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import api from "../../../lib/api";
 
 const chartData = [
-{ day: "T2", applications: 12, views: 45 },
-{ day: "T3", applications: 18, views: 62 },
-{ day: "T4", applications: 9, views: 38 },
-{ day: "T5", applications: 24, views: 78 },
-{ day: "T6", applications: 31, views: 95 },
-{ day: "T7", applications: 15, views: 52 },
-{ day: "CN", applications: 8, views: 29 }];
-
+  { day: "T2", applications: 12, views: 45 },
+  { day: "T3", applications: 18, views: 62 },
+  { day: "T4", applications: 9, views: 38 },
+  { day: "T5", applications: 24, views: 78 },
+  { day: "T6", applications: 31, views: 95 },
+  { day: "T7", applications: 15, views: 52 },
+  { day: "CN", applications: 8, views: 29 }
+];
 
 export function EmployerDashboard() {
   const navigate = useNavigate();
-  const activeJobs = mockJobs.filter((j) => j.employerId === "e1" && j.status === "active");
-  const recentApps = mockApplications.slice(0, 5);
-  const topCandidates = mockCandidates.sort((a, b) => b.aiScore - a.aiScore).slice(0, 4);
+  const [jobs, setJobs] = useState([]);
+  const [apps, setApps] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/api/jobs/employer/me'),
+      api.get('/api/applications/employer/me')
+    ]).then(([resJobs, resApps]) => {
+      setJobs(resJobs.data.jobs || []);
+      setApps(resApps.data || []);
+      setLoading(false);
+    }).catch(err => {
+      console.error(err);
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) return <div>Đang tải dữ liệu...</div>;
+
+  const activeJobs = jobs.filter((j) => j.status === "active");
+  const recentApps = apps.slice(0, 5);
+  const topCandidates = [...apps].sort((a, b) => b.matchScore - a.matchScore).slice(0, 4);
 
   const stats = [
-  { label: "Bài đăng đang active", value: activeJobs.length, icon: Briefcase, color: "bg-indigo-50 text-indigo-600", trend: "+2 tuần này" },
-  { label: "Tổng ứng viên", value: 24, icon: Users, color: "bg-violet-50 text-violet-600", trend: "+8 hôm nay" },
-  { label: "AI Gợi ý mới", value: 11, icon: Brain, color: "bg-cyan-50 text-cyan-600", trend: "Score > 90%" },
-  { label: "Tuyển thành công", value: 3, icon: CheckCircle, color: "bg-emerald-50 text-emerald-600", trend: "Tháng này" }];
-
+    { label: "Bài đăng đang active", value: activeJobs.length, icon: Briefcase, color: "bg-indigo-50 text-indigo-600", trend: "Live" },
+    { label: "Tổng ứng viên", value: apps.length, icon: Users, color: "bg-violet-50 text-violet-600", trend: "+ mới" },
+    { label: "AI Đánh giá > 85%", value: apps.filter(a => a.matchScore >= 85).length, icon: Brain, color: "bg-cyan-50 text-cyan-600", trend: "Smart Pick" },
+    { label: "Tuyển thành công", value: apps.filter(a => a.stage === 'offer').length, icon: CheckCircle, color: "bg-emerald-50 text-emerald-600", trend: "Accepted" }
+  ];
 
   const statusConfig = {
     pending: { label: "Chờ duyệt", color: "text-amber-600", bg: "bg-amber-50" },
@@ -40,18 +61,16 @@ export function EmployerDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-gray-900">Tổng quan tuyển dụng</h1>
-          <p className="text-sm text-gray-500 mt-1">Chào mừng trở lại, TechVision Vietnam! Hôm nay có 8 hồ sơ mới.</p>
+          <h1 className="text-gray-900">Tổng quan tuyển dụng (Dữ liệu thật)</h1>
+          <p className="text-sm text-gray-500 mt-1">Hệ thống đang phục vụ quản lý nhân sự bằng AI.</p>
         </div>
         <button onClick={() => navigate("/employer/jobs")} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm transition-colors">
           <Plus className="w-4 h-4" /> Đăng tuyển mới
         </button>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((s) =>
         <div key={s.label} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
@@ -68,11 +87,10 @@ export function EmployerDashboard() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Chart */}
         <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h3 className="text-sm text-gray-900">Hoạt động tuần này</h3>
+              <h3 className="text-sm text-gray-900">Hoạt động tuần này (Demo Layout)</h3>
               <p className="text-xs text-gray-400">Số lượng hồ sơ & lượt xem JD</p>
             </div>
             <BarChart3 className="w-5 h-5 text-gray-300" />
@@ -89,70 +107,49 @@ export function EmployerDashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* AI Alert Panel */}
         <div className="space-y-4">
           <div className="bg-gradient-to-br from-violet-600 to-purple-700 rounded-2xl p-5 text-white">
             <div className="flex items-center gap-2 mb-3">
               <Brain className="w-5 h-5 text-violet-200" />
-              <span className="text-sm" style={{ fontWeight: 600 }}>AI Engine Status</span>
+              <span className="text-sm" style={{ fontWeight: 600 }}>Cục AI Cục Bộ (Qwen 1.5b)</span>
             </div>
             <div className="space-y-2 mb-4">
-              {[
-              { label: "CV đã xử lý", value: "127 hôm nay" },
-              { label: "Độ chính xác", value: "87.3%" },
-              { label: "Feedback loops", value: "14 tuần này" }].
-              map((item) =>
-              <div key={item.label} className="flex items-center justify-between text-sm">
-                  <span className="text-violet-200">{item.label}</span>
-                  <span className="text-white" style={{ fontWeight: 600 }}>{item.value}</span>
-                </div>
-              )}
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-violet-200">Đã chấm điểm</span>
+                <span className="text-white" style={{ fontWeight: 600 }}>{apps.filter(x => x.matchScore).length} CV</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-violet-200">Không hỗ trợ</span>
+                <span className="text-white" style={{ fontWeight: 600 }}>0 lỗi</span>
+              </div>
             </div>
             <div className="flex items-center gap-2 bg-white/20 rounded-xl p-2.5">
               <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-              <span className="text-xs text-white">Hệ thống đang hoạt động bình thường</span>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <h3 className="text-sm text-gray-900 mb-3">Việc cần làm</h3>
-            <div className="space-y-2">
-              {[
-              { text: "2 hồ sơ cần duyệt gấp", color: "text-red-500", icon: AlertCircle },
-              { text: "3 ứng viên AI đề xuất mới", color: "text-violet-500", icon: Brain },
-              { text: "1 lịch phỏng vấn sắp tới", color: "text-indigo-500", icon: Clock }].
-              map((item) =>
-              <div key={item.text} className="flex items-center gap-2 text-xs p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <item.icon className={`w-3.5 h-3.5 ${item.color} flex-shrink-0`} />
-                  <span className="text-gray-600">{item.text}</span>
-                  <ChevronRight className="w-3 h-3 text-gray-300 ml-auto" />
-                </div>
-              )}
+              <span className="text-xs text-white">Online via Ollama</span>
             </div>
           </div>
         </div>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
-        {/* Recent Applications */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-sm text-gray-900">Hồ sơ gần đây</h3>
+            <h3 className="text-sm text-gray-900">Hồ sơ mới đây</h3>
             <button onClick={() => navigate("/employer/candidates")} className="text-xs text-indigo-600 flex items-center gap-1">Xem tất cả <ChevronRight className="w-3 h-3" /></button>
           </div>
           <div className="divide-y divide-gray-50">
             {recentApps.map((app) => {
-              const sc = statusConfig[app.status] || statusConfig.pending;
+              const sc = statusConfig[app.stage] || statusConfig.pending;
               return (
-                <div key={app.id} className="p-4 hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => navigate("/employer/candidates")}>
+                <div key={app.applicationId} className="p-4 hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => navigate("/employer/candidates")}>
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-xs flex-shrink-0" style={{ fontWeight: 700, backgroundColor: "#6366f1" }}>
-                      {app.candidateName.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                      {typeof app.avatar === "string" && app.avatar.length === 1 ? app.avatar : <User className="w-4 h-4"/>}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <div>
-                          <div className="text-sm text-gray-900 truncate" style={{ fontWeight: 500 }}>{app.candidateName}</div>
+                          <div className="text-sm text-gray-900 truncate" style={{ fontWeight: 500 }}>{app.name}</div>
                           <div className="text-xs text-gray-400 truncate">{app.jobTitle}</div>
                         </div>
                         <span className={`text-xs px-2 py-0.5 rounded-lg ${sc.bg} ${sc.color} flex-shrink-0`}>{sc.label}</span>
@@ -160,35 +157,32 @@ export function EmployerDashboard() {
                       <div className="flex items-center gap-3 mt-1">
                         <div className="flex items-center gap-1 text-xs text-violet-600">
                           <Brain className="w-3 h-3" />
-                          <span style={{ fontWeight: 600 }}>{app.aiScore}%</span>
+                          <span style={{ fontWeight: 600 }}>{app.matchScore}%</span>
                         </div>
-                        {app.cvRead && <span className="text-xs text-emerald-600 flex items-center gap-1"><Eye className="w-3 h-3" />CV đã xem</span>}
-                        {app.type === "ai_suggested" && <span className="text-xs bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded">AI</span>}
                       </div>
                     </div>
                   </div>
                 </div>);
-
             })}
+            {recentApps.length === 0 && <div className="p-4 text-center text-sm text-gray-500">Chưa có hồ sơ nào</div>}
           </div>
         </div>
 
-        {/* Top AI Candidates */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-5 border-b border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4 text-amber-400" />
-              <h3 className="text-sm text-gray-900">Top AI-Ranked Candidates</h3>
+              <h3 className="text-sm text-gray-900">Top AI Mát tay (Điểm Cao)</h3>
             </div>
             <button onClick={() => navigate("/employer/candidates")} className="text-xs text-indigo-600 flex items-center gap-1">Xem tất cả <ChevronRight className="w-3 h-3" /></button>
           </div>
           <div className="divide-y divide-gray-50">
             {topCandidates.map((c, idx) =>
-            <div key={c.id} className="p-4 hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => navigate("/employer/candidates")}>
+            <div key={c.applicationId} className="p-4 hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => navigate("/employer/candidates")}>
                 <div className="flex items-center gap-3">
                   <div className="text-lg text-gray-300 w-5 text-center" style={{ fontWeight: 700 }}>#{idx + 1}</div>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm flex-shrink-0" style={{ fontWeight: 700, backgroundColor: c.avatarColor }}>
-                    {c.avatar}
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm flex-shrink-0" style={{ fontWeight: 700, backgroundColor: "#8b5cf6" }}>
+                    {typeof c.avatar === "string" && c.avatar.length === 1 ? c.avatar : <User className="w-4 h-4"/>}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
@@ -198,26 +192,21 @@ export function EmployerDashboard() {
                       </div>
                       <div className="flex items-center gap-1 bg-emerald-50 text-emerald-600 px-2 py-1 rounded-lg flex-shrink-0">
                         <Target className="w-3 h-3" />
-                        <span className="text-xs" style={{ fontWeight: 700 }}>{c.aiScore}%</span>
+                        <span className="text-xs" style={{ fontWeight: 700 }}>{c.matchScore}%</span>
                       </div>
-                    </div>
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {c.skills.slice(0, 3).map((s) =>
-                    <span key={s} className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{s}</span>
-                    )}
                     </div>
                   </div>
                 </div>
               </div>
             )}
+            {topCandidates.length === 0 && <div className="p-4 text-center text-sm text-gray-500">Chưa có ứng viên được AI đánh giá</div>}
           </div>
         </div>
       </div>
 
-      {/* Active Jobs */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="text-sm text-gray-900">Bài đăng đang tuyển</h3>
+          <h3 className="text-sm text-gray-900">Bài đăng đang mở</h3>
           <button onClick={() => navigate("/employer/jobs")} className="text-xs text-indigo-600 flex items-center gap-1">Quản lý <ChevronRight className="w-3 h-3" /></button>
         </div>
         <div className="divide-y divide-gray-50">
@@ -226,25 +215,21 @@ export function EmployerDashboard() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <h4 className="text-sm text-gray-900 truncate" style={{ fontWeight: 500 }}>{job.title}</h4>
-                  {job.featured && <span className="text-xs bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded">Nổi bật</span>}
                 </div>
                 <div className="flex items-center gap-4 text-xs text-gray-400">
                   <span className="flex items-center gap-1"><Users className="w-3 h-3" />{job.applicants} ứng viên</span>
                   <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-violet-400" />{job.aiSuggestedCount} AI gợi ý</span>
-                  <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{job.views} lượt xem</span>
                   <span>Hạn: {job.deadline}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-2 w-20 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min(job.applicants / 50 * 100, 100)}%` }}></div>
-                </div>
                 <ArrowUpRight className="w-4 h-4 text-gray-300" />
               </div>
             </div>
           )}
+          {activeJobs.length === 0 && <div className="p-4 text-center text-sm text-gray-500">Chưa có bài đăng nào</div>}
         </div>
       </div>
-    </div>);
-
+    </div>
+  );
 }

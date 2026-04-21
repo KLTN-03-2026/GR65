@@ -137,3 +137,24 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# ── Python / AI Service ──────────────────────────
+# Virtual environments (root & ai_service)
+.venv/
+venv/
+ai_service/venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# AI Service temporary/generated files
+ai_service/error.log
+ai_service/*.index
+ai_service/*.sqlite
+ai_service/__pycache__/
+
+# Uploads (CV files uploaded by users)
+backend/uploads/

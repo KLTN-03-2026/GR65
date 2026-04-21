@@ -1,33 +1,19 @@
 import { useState } from "react";
 import {
   Brain, Calendar, CheckCircle,
-  XCircle, ArrowRight, User, Eye } from
-"lucide-react";
+  XCircle, ArrowRight, User, Eye
+} from
+  "lucide-react";
 import { mockPipeline } from "../../data/mockData";
 import { toast } from "sonner";
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 const columns = [
-{ key: "pending", label: "Chờ duyệt", color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200" },
-{ key: "reviewing", label: "Đánh giá", color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200" },
-{ key: "interview", label: "Phỏng vấn", color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-200" },
-{ key: "offer", label: "Nhận việc", color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200" },
-{ key: "rejected", label: "Từ chối", color: "text-red-500", bg: "bg-red-50", border: "border-red-200" }];
+  { key: "pending", label: "Chờ duyệt", color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200" },
+  { key: "reviewing", label: "Đánh giá", color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200" },
+  { key: "interview", label: "Phỏng vấn", color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-200" },
+  { key: "offer", label: "Nhận việc", color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200" },
+  { key: "rejected", label: "Từ chối", color: "text-red-500", bg: "bg-red-50", border: "border-red-200" }];
 
 
 export function Pipeline() {
@@ -88,7 +74,7 @@ export function Pipeline() {
       {/* Pipeline summary */}
       <div className="flex gap-3 overflow-x-auto pb-1">
         {columns.map((col) =>
-        <div key={col.key} className={`flex items-center gap-2 px-4 py-2 rounded-xl border flex-shrink-0 ${col.bg} ${col.border}`}>
+          <div key={col.key} className={`flex items-center gap-2 px-4 py-2 rounded-xl border flex-shrink-0 ${col.bg} ${col.border}`}>
             <span className={`text-sm ${col.color}`} style={{ fontWeight: 500 }}>{col.label}</span>
             <span className={`text-xs px-1.5 py-0.5 rounded-full bg-white/60 ${col.color}`} style={{ fontWeight: 700 }}>{pipeline[col.key].length}</span>
           </div>
@@ -98,13 +84,13 @@ export function Pipeline() {
       {/* Kanban board */}
       <div className="grid grid-cols-5 gap-4 min-h-96">
         {columns.map((col) =>
-        <div
-          key={col.key}
-          onDragOver={(e) => {e.preventDefault();setDragOverCol(col.key);}}
-          onDragLeave={() => setDragOverCol(null)}
-          onDrop={() => handleDrop(col.key)}
-          className={`rounded-2xl transition-all ${dragOverCol === col.key ? `${col.bg} ${col.border} border-2 border-dashed` : "bg-slate-50 border-2 border-transparent"}`}>
-          
+          <div
+            key={col.key}
+            onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.key); }}
+            onDragLeave={() => setDragOverCol(null)}
+            onDrop={() => handleDrop(col.key)}
+            className={`rounded-2xl transition-all ${dragOverCol === col.key ? `${col.bg} ${col.border} border-2 border-dashed` : "bg-slate-50 border-2 border-transparent"}`}>
+
             {/* Column header */}
             <div className={`p-3 rounded-t-2xl border-b ${col.bg} ${col.border} border-b`}>
               <div className="flex items-center justify-between">
@@ -116,12 +102,12 @@ export function Pipeline() {
             {/* Cards */}
             <div className="p-2 space-y-2 min-h-32">
               {pipeline[col.key].map((card) =>
-            <div
-              key={card.id}
-              draggable
-              onDragStart={() => handleDragStart(card.id, col.key)}
-              className="bg-white rounded-xl border border-gray-100 p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow">
-              
+                <div
+                  key={card.id}
+                  draggable
+                  onDragStart={() => handleDragStart(card.id, col.key)}
+                  className="bg-white rounded-xl border border-gray-100 p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow">
+
                   {/* Avatar + name */}
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white flex-shrink-0" style={{ fontWeight: 700, fontSize: 11, backgroundColor: card.avatarColor }}>
@@ -140,24 +126,24 @@ export function Pipeline() {
                       <span className="text-xs text-violet-600" style={{ fontWeight: 600 }}>{card.aiScore}%</span>
                     </div>
                     {card.type === "ai_suggested" &&
-                <span className="text-xs bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded" style={{ fontSize: 9 }}>AI</span>
-                }
+                      <span className="text-xs bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded" style={{ fontSize: 9 }}>AI</span>
+                    }
                     {card.cvRead &&
-                <Eye className="w-3 h-3 text-emerald-500" />
-                }
+                      <Eye className="w-3 h-3 text-emerald-500" />
+                    }
                   </div>
 
                   {card.interviewDate &&
-              <div className="flex items-center gap-1 text-xs text-indigo-600 bg-indigo-50 rounded-lg p-1.5 mb-2">
+                    <div className="flex items-center gap-1 text-xs text-indigo-600 bg-indigo-50 rounded-lg p-1.5 mb-2">
                       <Calendar className="w-3 h-3" />
                       <span style={{ fontSize: 10 }}>{card.interviewDate}</span>
                     </div>
-              }
+                  }
 
                   {/* Quick actions */}
                   <div className="flex gap-1 mt-2 pt-2 border-t border-gray-50">
                     {col.key === "pending" &&
-                <>
+                      <>
                         <button onClick={() => moveCard(card.id, col.key, "reviewing")} className="flex-1 flex items-center justify-center gap-1 text-xs bg-blue-50 text-blue-600 py-1 rounded-lg hover:bg-blue-100 transition-colors">
                           <CheckCircle className="w-3 h-3" /> Duyệt
                         </button>
@@ -165,9 +151,9 @@ export function Pipeline() {
                           <XCircle className="w-3 h-3" /> Từ chối
                         </button>
                       </>
-                }
+                    }
                     {col.key === "reviewing" &&
-                <>
+                      <>
                         <button onClick={() => moveCard(card.id, col.key, "interview")} className="flex-1 flex items-center justify-center gap-1 text-xs bg-indigo-50 text-indigo-600 py-1 rounded-lg hover:bg-indigo-100 transition-colors">
                           <Calendar className="w-3 h-3" /> Mời PV
                         </button>
@@ -175,9 +161,9 @@ export function Pipeline() {
                           <XCircle className="w-3 h-3" />
                         </button>
                       </>
-                }
+                    }
                     {col.key === "interview" &&
-                <>
+                      <>
                         <button onClick={() => moveCard(card.id, col.key, "offer")} className="flex-1 flex items-center justify-center gap-1 text-xs bg-emerald-50 text-emerald-600 py-1 rounded-lg hover:bg-emerald-100 transition-colors">
                           <CheckCircle className="w-3 h-3" /> Offer
                         </button>
@@ -185,27 +171,27 @@ export function Pipeline() {
                           <XCircle className="w-3 h-3" />
                         </button>
                       </>
-                }
+                    }
                     {col.key === "offer" &&
-                <div className="flex-1 flex items-center justify-center gap-1 text-xs text-emerald-600">
+                      <div className="flex-1 flex items-center justify-center gap-1 text-xs text-emerald-600">
                         <CheckCircle className="w-3 h-3" /> Đã offer!
                       </div>
-                }
+                    }
                     {col.key === "rejected" &&
-                <button onClick={() => moveCard(card.id, col.key, "pending")} className="flex-1 flex items-center justify-center gap-1 text-xs bg-gray-50 text-gray-500 py-1 rounded-lg hover:bg-gray-100 transition-colors">
+                      <button onClick={() => moveCard(card.id, col.key, "pending")} className="flex-1 flex items-center justify-center gap-1 text-xs bg-gray-50 text-gray-500 py-1 rounded-lg hover:bg-gray-100 transition-colors">
                         <ArrowRight className="w-3 h-3" /> Xem xét lại
                       </button>
-                }
+                    }
                   </div>
                 </div>
-            )}
+              )}
 
               {pipeline[col.key].length === 0 &&
-            <div className="flex flex-col items-center justify-center py-6 text-center opacity-40">
+                <div className="flex flex-col items-center justify-center py-6 text-center opacity-40">
                   <User className="w-6 h-6 text-gray-300 mb-1" />
                   <span className="text-xs text-gray-400">Kéo ứng viên vào đây</span>
                 </div>
-            }
+              }
             </div>
           </div>
         )}
