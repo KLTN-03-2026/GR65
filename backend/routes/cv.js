@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { sql, poolPromise } = require('../db');
 const authMiddleware = require('../middleware/auth');
+const { logActivity } = require('../utils/logger');
 
 // ── Multer config ─────────────────────────────────
 const storage = multer.diskStorage({
@@ -170,6 +171,8 @@ router.post('/upload', upload.single('cv'), async (req, res) => {
         VALUES (NEWID(), @CandidateId, @FileName, @FileUrl, @FileSize, @Format, @IsDefault, 0, 0, GETDATE())
       `)).recordset[0].Id;
 
+    await logActivity(id, 'UPLOAD_CV', 'CV', cvId, `Candidate uploaded CV: ${req.file.originalname}`);
+
     res.json({
       message: 'Upload CV thành công! AI đang phân tích...',
       cv: {
@@ -223,6 +226,7 @@ router.put('/:id/default', async (req, res) => {
       .input('Id', sql.UniqueIdentifier, cvId)
       .query('UPDATE CVs SET IsDefault = 1 WHERE Id = @Id');
 
+    await logActivity(userId, 'SET_DEFAULT_CV', 'CV', cvId, 'Candidate set a CV as default');
     res.json({ message: 'Đã đặt CV mặc định.' });
   } catch (err) {
     console.error('PUT /api/cv/:id/default error:', err);
@@ -256,6 +260,7 @@ router.post('/:id/reparse', async (req, res) => {
       .input('Id', sql.UniqueIdentifier, cvId)
       .query('UPDATE CVs SET AIParsed = 0, AIScore = 0, AIExtractedJson = NULL WHERE Id = @Id');
 
+    await logActivity(userId, 'REPARSE_CV', 'CV', cvId, 'Candidate requested CV re-parsing');
     res.json({ message: 'Đang phân tích lại, vui lòng chờ...' });
 
     // Gửi sang Python API chạy ngầm
@@ -292,6 +297,8 @@ router.delete('/:id', async (req, res) => {
       .input('Id', sql.UniqueIdentifier, cvId)
       .query('DELETE FROM CVs WHERE Id = @Id');
 
+    await logActivity(userId, 'DELETE_CV', 'CV', cvId, 'Candidate deleted a CV');
+    
     const filePath = path.join(__dirname, '..', fileUrl);
     fs.unlink(filePath, () => { });
 

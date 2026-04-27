@@ -91,6 +91,7 @@ CREATE TABLE CVs (
     AIParsed BIT DEFAULT 0,
     AIScore DECIMAL(5,2) DEFAULT 0,
     AIExtractedJson NVARCHAR(MAX), -- JSON từ quá trình bóc tách bằng AI
+    Status NVARCHAR(50) DEFAULT 'approved' CHECK (Status IN ('pending', 'approved', 'rejected')),
     UploadedDate DATETIME2 DEFAULT CURRENT_TIMESTAMP
 );
 GO
@@ -122,6 +123,57 @@ CREATE TABLE Notifications (
     Link NVARCHAR(500),
     IsRead BIT DEFAULT 0,
     CreatedDate DATETIME2 DEFAULT CURRENT_TIMESTAMP
+);
+GO
+
+-- 8. Bảng ActivityLog (Lịch sử hoạt động)
+CREATE TABLE ActivityLog (
+    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    UserId UNIQUEIDENTIFIER FOREIGN KEY REFERENCES Users(Id) ON DELETE SET NULL,
+    Action NVARCHAR(100) NOT NULL, -- Ví dụ: 'LOGIN', 'POST_JOB', 'UPLOAD_CV', 'APPLY_JOB'
+    EntityType NVARCHAR(50),      -- Ví dụ: 'User', 'Job', 'CV', 'Application'
+    EntityId UNIQUEIDENTIFIER,
+    Details NVARCHAR(MAX),
+    CreatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP
+);
+GO
+
+-- 9. Bảng Roles (Vai trò)
+CREATE TABLE Roles (
+    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    Name NVARCHAR(50) NOT NULL UNIQUE, -- Admin, Candidate, Employer, v.v.
+    Description NVARCHAR(255),
+    IsSystem BIT DEFAULT 0, -- Vai trò hệ thống không được xóa
+    CreatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP
+);
+GO
+
+-- 10. Bảng Permissions (Quyền hạn)
+CREATE TABLE Permissions (
+    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    Code NVARCHAR(100) NOT NULL UNIQUE, -- VD: 'MANAGE_USERS', 'POST_JOB'
+    Name NVARCHAR(100) NOT NULL,
+    Module NVARCHAR(50), -- Auth, Jobs, Users, CV...
+    Description NVARCHAR(255)
+);
+GO
+
+-- 11. Bảng RolePermissions (Ma trận phân quyền)
+CREATE TABLE RolePermissions (
+    RoleId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES Roles(Id) ON DELETE CASCADE,
+    PermissionId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES Permissions(Id) ON DELETE CASCADE,
+    PRIMARY KEY (RoleId, PermissionId)
+);
+GO
+
+-- 12. Bảng RoleChangeLog (Lịch sử thay đổi quyền)
+CREATE TABLE RoleChangeLog (
+    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    AdminId UNIQUEIDENTIFIER FOREIGN KEY REFERENCES Users(Id),
+    Action NVARCHAR(50), -- ADD_PERMISSION, REMOVE_PERMISSION, CREATE_ROLE
+    RoleId UNIQUEIDENTIFIER,
+    Details NVARCHAR(MAX),
+    CreatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP
 );
 GO
 ALTER TABLE Users ADD AuthProvider NVARCHAR(50) DEFAULT 'local'; -- local, google

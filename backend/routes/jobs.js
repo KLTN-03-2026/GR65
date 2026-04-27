@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { sql, poolPromise } = require('../db');
 const authMiddleware = require('../middleware/auth');
+const { logActivity } = require('../utils/logger');
 
 // ────────────────────────────────────────────────
 // GET /api/jobs  – Lấy danh sách công việc (public)
@@ -161,7 +162,9 @@ router.post('/', authMiddleware, async (req, res) => {
     const { title, location, type, salary, experience, skills, description, requirements, benefits, category } = req.body;
     const pool = await poolPromise;
 
+    const jobId = require('crypto').randomUUID();
     await pool.request()
+      .input('Id', sql.UniqueIdentifier, jobId)
       .input('EmployerId', sql.UniqueIdentifier, id)
       .input('Title', sql.NVarChar, title)
       .input('Location', sql.NVarChar, location)
@@ -175,10 +178,11 @@ router.post('/', authMiddleware, async (req, res) => {
       .input('Category', sql.NVarChar, category)
       .query(`
         INSERT INTO Jobs (Id, EmployerId, Title, Location, JobType, SalaryRange, ExperienceReq, SkillsReqJson, Description, Requirements, Benefits, Category, Status, CreatedAt)
-        VALUES (NEWID(), @EmployerId, @Title, @Location, @JobType, @SalaryRange, @ExperienceReq, @SkillsReqJson, @Description, @Requirements, @Benefits, @Category, 'active', GETDATE())
+        VALUES (@Id, @EmployerId, @Title, @Location, @JobType, @SalaryRange, @ExperienceReq, @SkillsReqJson, @Description, @Requirements, @Benefits, @Category, 'active', GETDATE())
       `);
       
-    res.status(201).json({ message: 'Tạo công việc thành công!' });
+    await logActivity(id, 'POST_JOB', 'Job', jobId, `Employer posted a new job: ${title}`);
+    res.status(201).json({ message: 'Tạo công việc thành công!', jobId });
   } catch (err) {
     console.error('Lỗi tao job:', err);
     res.status(500).json({ message: 'Lỗi hệ thống.' });
@@ -380,14 +384,17 @@ router.post('/:id/apply', authMiddleware, async (req, res) => {
     }
 
     // Tạo đơn ứng tuyển
+    const appId = require('crypto').randomUUID();
     await pool.request()
+      .input('Id', sql.UniqueIdentifier, appId)
       .input('JobId', sql.UniqueIdentifier, jobId)
       .input('CandidateId', sql.UniqueIdentifier, candidateId)
       .query(`
         INSERT INTO Applications (Id, JobId, CandidateId, Stage, ApplicationType, AppliedDate, UpdatedAt)
-        VALUES (NEWID(), @JobId, @CandidateId, 'pending', 'applied', GETDATE(), GETDATE())
+        VALUES (@Id, @JobId, @CandidateId, 'pending', 'applied', GETDATE(), GETDATE())
       `);
 
+    await logActivity(candidateId, 'APPLY_JOB', 'Application', appId, `Candidate applied for job ID: ${jobId}`);
     res.json({ message: 'Ứng tuyển thành công!' });
   } catch (err) {
     console.error('Lỗi khi ứng tuyển:', err);

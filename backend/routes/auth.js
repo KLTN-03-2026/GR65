@@ -3,12 +3,96 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { sql, poolPromise } = require('../db');
+const { logActivity } = require('../utils/logger');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_jwt_key_here';
 
-// @route   POST /api/auth/register
-// @desc    Register a user (Candidate or Employer)
-// @access  Public
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     User:
+ *       type: object
+ *       required:
+ *         - email
+ *         - password
+ *         - role
+ *       properties:
+ *         email:
+ *           type: string
+ *           format: email
+ *           description: Email của người dùng
+ *         password:
+ *           type: string
+ *           format: password
+ *           description: Mật khẩu (tối thiểu 6 ký tự)
+ *         role:
+ *           type: string
+ *           enum: [Candidate, Employer]
+ *           description: Vai trò người dùng (không thể đăng ký Admin qua API này)
+ *         fullName:
+ *           type: string
+ *           description: Họ và tên (cho Candidate)
+ *         companyName:
+ *           type: string
+ *           description: Tên công ty (cho Employer)
+ *         phone:
+ *           type: string
+ *           description: Số điện thoại
+ *     Login:
+ *       type: object
+ *       required:
+ *         - email
+ *         - password
+ *       properties:
+ *         email:
+ *           type: string
+ *           format: email
+ *         password:
+ *           type: string
+ *           format: password
+ *     AuthResponse:
+ *       type: object
+ *       properties:
+ *         message:
+ *           type: string
+ *         token:
+ *           type: string
+ *         user:
+ *           type: object
+ *           properties:
+ *             id:
+ *               type: string
+ *             email:
+ *               type: string
+ *             role:
+ *               type: string
+ *             profile:
+ *               type: object
+ */
+
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Đăng ký tài khoản mới (Candidate hoặc Employer)
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/User'
+ *     responses:
+ *       201:
+ *         description: Đăng ký thành công
+ *       400:
+ *         description: Dữ liệu không hợp lệ hoặc Email đã tồn tại
+ *       403:
+ *         description: Không có quyền đăng ký Admin
+ *       500:
+ *         description: Lỗi hệ thống
+ */
 router.post('/register', async (req, res) => {
   try {
     const { email, password, role, fullName, companyName, phone } = req.body;
@@ -78,15 +162,39 @@ router.post('/register', async (req, res) => {
 
     res.status(201).json({ message: 'Đăng ký thành công.', userId, role: capRole });
 
+    // Log registration
+    await logActivity(userId, 'REGISTER', 'User', userId, `User registered as ${capRole}`);
+
   } catch (err) {
     console.error('Lỗi khi đăng ký:', err);
     res.status(500).json({ message: 'Lỗi hệ thống.' });
   }
 });
 
-// @route   POST /api/auth/login
-// @desc    Login User and return JWT
-// @access  Public
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Đăng nhập người dùng (Candidate, Employer, Admin)
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Login'
+ *     responses:
+ *       200:
+ *         description: Đăng nhập thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResponse'
+ *       400:
+ *         description: Thông tin đăng nhập không chính xác
+ *       500:
+ *         description: Lỗi hệ thống
+ */
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -143,9 +251,12 @@ router.post('/login', async (req, res) => {
       payload,
       JWT_SECRET,
       { expiresIn: '7d' },
-      (err, token) => {
+      async (err, token) => {
         if (err) throw err;
         
+        // Log login
+        await logActivity(user.Id, 'LOGIN', 'User', user.Id, `User logged in with role ${user.Role}`);
+
         res.json({
           message: 'Đăng nhập thành công',
           token,
