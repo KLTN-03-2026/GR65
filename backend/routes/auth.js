@@ -205,7 +205,22 @@ router.post('/login', async (req, res) => {
 
     const pool = await poolPromise;
 
-    // Find user
+    // 1. Đảm bảo cấu trúc DB cho bảo mật và lấy cấu hình hệ thống
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Users') AND name = 'LoginAttempts') 
+      ALTER TABLE Users ADD LoginAttempts INT DEFAULT 0;
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Users') AND name = 'LockoutUntil') 
+      ALTER TABLE Users ADD LockoutUntil DATETIME;
+    `);
+
+    const settingsResult = await pool.request().query("SELECT SettingKey, SettingValue FROM SystemSettings WHERE Category IN ('Security', 'Session')");
+    const settings = {};
+    settingsResult.recordset.forEach(s => settings[s.SettingKey] = s.SettingValue);
+
+    const maxAttempts = parseInt(settings['security_max_login_attempts'] || '5');
+    const sessionMinutes = parseInt(settings['session_timeout_minutes'] || '1440'); // Mặc định 1 ngày nếu không có
+
+    // 2. Tìm người dùng và kiểm tra trạng thái khóa
     const result = await pool.request()
       .input('Email', sql.NVarChar, email)
       .query('SELECT * FROM Users WHERE Email = @Email');
@@ -216,56 +231,73 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Thông tin đăng nhập không chính xác.' });
     }
 
-    // Verify password map correctly
+    // Kiểm tra xem tài khoản có đang bị khóa không
+    if (user.LockoutUntil && new Date(user.LockoutUntil) > new Date()) {
+      const remainingMinutes = Math.ceil((new Date(user.LockoutUntil) - new Date()) / 60000);
+      return res.status(403).json({ 
+        message: `Tài khoản đã bị khóa do đăng nhập sai quá nhiều lần. Vui lòng thử lại sau ${remainingMinutes} phút.` 
+      });
+    }
+
+    // 3. Xác thực mật khẩu
     const isMatch = await bcrypt.compare(password, user.PasswordHash);
 
     if (!isMatch) {
-      return res.status(400).json({ message: 'Thông tin đăng nhập không chính xác.' });
+      // Tăng số lần đăng nhập sai
+      const newAttempts = (user.LoginAttempts || 0) + 1;
+      let lockoutQuery = "";
+      
+      if (newAttempts >= maxAttempts) {
+        // Khóa tài khoản trong 30 phút
+        const lockoutTime = new Date(new Date().getTime() + 30 * 60000);
+        await pool.request()
+          .input('id', sql.UniqueIdentifier, user.Id)
+          .input('until', sql.DateTime, lockoutTime)
+          .query("UPDATE Users SET LoginAttempts = 0, LockoutUntil = @until WHERE Id = @id");
+        
+        return res.status(403).json({ message: 'Bạn đã nhập sai quá nhiều lần. Tài khoản đã bị tạm khóa 30 phút.' });
+      } else {
+        await pool.request()
+          .input('id', sql.UniqueIdentifier, user.Id)
+          .input('attempts', sql.Int, newAttempts)
+          .query("UPDATE Users SET LoginAttempts = @attempts WHERE Id = @id");
+        
+        return res.status(400).json({ message: `Thông tin đăng nhập không chính xác. Bạn còn ${maxAttempts - newAttempts} lần thử.` });
+      }
     }
 
-    // Load profile info based on role
-    let profile = null;
-    let isProfileComplete = true;
+    // Đăng nhập thành công -> Reset số lần thử
+    await pool.request()
+      .input('id', sql.UniqueIdentifier, user.Id)
+      .query("UPDATE Users SET LoginAttempts = 0, LockoutUntil = NULL WHERE Id = @id");
 
+    // Load profile info dựa trên role (giữ nguyên logic cũ)
+    let profile = null;
     if (user.Role === 'Candidate') {
       const pResult = await pool.request().input('UserId', sql.UniqueIdentifier, user.Id).query('SELECT FullName, Phone, AvatarUrl, Title, SkillsJson FROM Candidates WHERE UserId = @UserId');
       profile = pResult.recordset[0];
-      if (!profile?.Title || !profile?.SkillsJson) isProfileComplete = false;
     } else if (user.Role === 'Employer') {
       const pResult = await pool.request().input('UserId', sql.UniqueIdentifier, user.Id).query('SELECT CompanyName, LogoUrl, Industry, Location FROM Employers WHERE UserId = @UserId');
       profile = pResult.recordset[0];
-      if (!profile?.Industry || !profile?.Location) isProfileComplete = false;
     } else if (user.Role === 'Admin') {
-      // Just bare admin info
-      profile = { FullName: 'System Admin' };
+      const pResult = await pool.request().input('UserId', sql.UniqueIdentifier, user.Id).query('SELECT FullName, Department FROM AdminProfiles WHERE UserId = @UserId');
+      profile = pResult.recordset[0] || { FullName: 'System Admin' };
     }
 
-    const payload = {
-      user: {
-        id: user.Id,
-        role: user.Role
-      }
-    };
+    const payload = { user: { id: user.Id, role: user.Role } };
 
+    // 4. Sử dụng thời gian phiên từ SystemSettings
     jwt.sign(
       payload,
       JWT_SECRET,
-      { expiresIn: '7d' },
+      { expiresIn: `${sessionMinutes}m` }, // Áp dụng session timeout động
       async (err, token) => {
         if (err) throw err;
-        
-        // Log login
         await logActivity(user.Id, 'LOGIN', 'User', user.Id, `User logged in with role ${user.Role}`);
-
         res.json({
           message: 'Đăng nhập thành công',
           token,
-          user: {
-            id: user.Id,
-            email: user.Email,
-            role: user.Role,
-            profile: profile
-          }
+          user: { id: user.Id, email: user.Email, role: user.Role, profile: profile }
         });
       }
     );
