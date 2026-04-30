@@ -6,7 +6,7 @@ import {
 "lucide-react";
 import { toast } from "sonner";
 
-const API_URL = "http://localhost:5000";
+import { API_URL } from "../../../lib/api";
 
 const SKILLS_SUGGESTIONS = [
 "React", "Vue.js", "Angular", "TypeScript", "JavaScript", "Node.js",

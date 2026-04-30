@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-const API_BASE = "http://localhost:5000";
+import { API_URL as API_BASE } from "../../../lib/api";
 
 const categories = ["Tất cả", "Lập trình", "Thiết kế", "Marketing", "Data & AI", "DevOps", "Quản lý sản phẩm"];
 const locations = ["Tất cả địa điểm", "TP. Hồ Chí Minh", "Hà Nội", "Đà Nẵng", "Remote"];

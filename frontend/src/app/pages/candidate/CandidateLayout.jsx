@@ -3,7 +3,7 @@ import { Outlet } from "react-router";
 import { LayoutDashboard, FileText, Briefcase, ClipboardList, UserCircle } from "lucide-react";
 import { DashboardLayout } from "../../components/layout/DashboardLayout";
 
-const API_BASE = "http://localhost:5000";
+import { API_URL as API_BASE } from "../../../lib/api";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Tổng quan",          path: "/candidate" },

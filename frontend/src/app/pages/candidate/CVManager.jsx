@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-const API_BASE = "http://localhost:5000";
+import { API_URL as API_BASE } from "../../../lib/api";
 
 const formatIcons = {
   PDF:   FileText,

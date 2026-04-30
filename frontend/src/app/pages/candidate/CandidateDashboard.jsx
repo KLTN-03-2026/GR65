@@ -6,7 +6,7 @@ import {
   CheckCircle, Target, Zap, Upload, Loader2, Building2,
 } from "lucide-react";
 
-const API_BASE = "http://localhost:5000";
+import { API_URL as API_BASE } from "../../../lib/api";
 
 const statusConfig = {
   pending:   { label: "Chờ duyệt",     color: "text-amber-600",  bg: "bg-amber-50 border-amber-200" },

@@ -14,6 +14,7 @@ import {
   Phone } from
 "lucide-react";
 import { toast } from "sonner";
+import { API_URL } from "../../../lib/api";
 
 
 
@@ -43,7 +44,7 @@ export function AuthPage() {
     setMode("login");
   }, [location.pathname]);
 
-const API_URL = "http://localhost:5000";
+// API_URL imported at top of file
 
   const handleSubmit = async (e) => {
     e.preventDefault();
