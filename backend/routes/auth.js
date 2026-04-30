@@ -308,4 +308,115 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// ── GOOGLE SIGN-IN ─────────────────────────────
+router.post('/google', async (req, res) => {
+  try {
+    const { credential, role } = req.body;
+
+    if (!credential) {
+      return res.status(400).json({ message: 'Thiếu Google credential.' });
+    }
+
+    // Verify Google ID Token
+    const { OAuth2Client } = require('google-auth-library');
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    
+    let payload;
+    try {
+      const ticket = await client.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch (err) {
+      console.error('Google token verification failed:', err.message);
+      return res.status(401).json({ message: 'Google token không hợp lệ.' });
+    }
+
+    const { sub: googleId, email, name, picture } = payload;
+    const capRole = (role || 'candidate').charAt(0).toUpperCase() + (role || 'candidate').slice(1).toLowerCase();
+
+    if (!['Candidate', 'Employer'].includes(capRole)) {
+      return res.status(400).json({ message: 'Vai trò không hợp lệ.' });
+    }
+
+    const pool = await poolPromise;
+
+    // Check if user exists (by GoogleId or Email)
+    const existingUser = await pool.request()
+      .input('GoogleId', sql.NVarChar, googleId)
+      .input('Email', sql.NVarChar, email)
+      .query('SELECT * FROM Users WHERE GoogleId = @GoogleId OR Email = @Email');
+
+    let user = existingUser.recordset[0];
+
+    if (!user) {
+      // Create new user
+      const insertRes = await pool.request()
+        .input('Email', sql.NVarChar, email)
+        .input('Role', sql.NVarChar, capRole)
+        .input('GoogleId', sql.NVarChar, googleId)
+        .input('AuthProvider', sql.NVarChar, 'google')
+        .query(`
+          INSERT INTO Users (Id, Email, PasswordHash, Role, GoogleId, AuthProvider, CreatedAt, UpdatedAt)
+          OUTPUT inserted.*
+          VALUES (NEWID(), @Email, 'GOOGLE_SSO', @Role, @GoogleId, 'google', GETDATE(), GETDATE())
+        `);
+      user = insertRes.recordset[0];
+
+      // Create profile based on role
+      if (capRole === 'Candidate') {
+        await pool.request()
+          .input('UserId', sql.UniqueIdentifier, user.Id)
+          .input('FullName', sql.NVarChar, name || '')
+          .input('AvatarUrl', sql.NVarChar, picture || null)
+          .query(`INSERT INTO Candidates (UserId, FullName, AvatarUrl, CreatedAt, UpdatedAt) VALUES (@UserId, @FullName, @AvatarUrl, GETDATE(), GETDATE())`);
+      } else if (capRole === 'Employer') {
+        await pool.request()
+          .input('UserId', sql.UniqueIdentifier, user.Id)
+          .input('CompanyName', sql.NVarChar, name || 'Công ty')
+          .query(`INSERT INTO Employers (UserId, CompanyName, CreatedAt, UpdatedAt) VALUES (@UserId, @CompanyName, GETDATE(), GETDATE())`);
+      }
+
+      await logActivity(user.Id, 'REGISTER_GOOGLE', 'User', user.Id, `Google SSO registration as ${capRole}`);
+    } else {
+      // Update GoogleId if user exists but was local
+      if (!user.GoogleId) {
+        await pool.request()
+          .input('Id', sql.UniqueIdentifier, user.Id)
+          .input('GoogleId', sql.NVarChar, googleId)
+          .query("UPDATE Users SET GoogleId = @GoogleId, AuthProvider = 'google' WHERE Id = @Id");
+      }
+    }
+
+    // Load profile
+    let profile = null;
+    if (user.Role === 'Candidate') {
+      const pResult = await pool.request().input('UserId', sql.UniqueIdentifier, user.Id).query('SELECT FullName, Phone, AvatarUrl, Title, SkillsJson FROM Candidates WHERE UserId = @UserId');
+      profile = pResult.recordset[0];
+    } else if (user.Role === 'Employer') {
+      const pResult = await pool.request().input('UserId', sql.UniqueIdentifier, user.Id).query('SELECT CompanyName, LogoUrl, Industry, Location FROM Employers WHERE UserId = @UserId');
+      profile = pResult.recordset[0];
+    } else if (user.Role === 'Admin') {
+      profile = { FullName: 'System Admin' };
+    }
+
+    // Generate JWT
+    const jwtPayload = { user: { id: user.Id, role: user.Role } };
+    const token = jwt.sign(jwtPayload, JWT_SECRET, { expiresIn: '1440m' });
+
+    await logActivity(user.Id, 'LOGIN_GOOGLE', 'User', user.Id, `Google SSO login`);
+
+    res.json({
+      message: 'Đăng nhập Google thành công',
+      token,
+      user: { id: user.Id, email: user.Email, role: user.Role, profile }
+    });
+
+  } catch (err) {
+    console.error('Lỗi Google Sign-In:', err);
+    res.status(500).json({ message: 'Lỗi hệ thống khi đăng nhập Google.' });
+  }
+});
+
 module.exports = router;

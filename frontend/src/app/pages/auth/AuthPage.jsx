@@ -355,8 +355,43 @@ export function AuthPage() {
                   type="button"
                   className="w-full flex items-center justify-center gap-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                   onClick={() => {
-                    // Xử lý logic đăng nhập Google ở đây
-                    console.log("Đăng nhập bằng Google cho vai trò:", role);
+                    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+                    if (!clientId || !window.google) {
+                      toast.error("Google Sign-In chưa sẵn sàng. Vui lòng thử lại.");
+                      return;
+                    }
+                    const googleClient = window.google.accounts.id;
+                    googleClient.initialize({
+                      client_id: clientId,
+                      callback: async (response) => {
+                        try {
+                          setLoading(true);
+                          const res = await fetch(`${API_URL}/api/auth/google`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ credential: response.credential, role })
+                          });
+                          const data = await res.json();
+                          if (!res.ok) {
+                            toast.error(data.message || "Đăng nhập Google thất bại!");
+                            return;
+                          }
+                          localStorage.setItem("token", data.token);
+                          localStorage.setItem("user", JSON.stringify(data.user));
+                          toast.success("Đăng nhập Google thành công!");
+                          const serverRole = data.user.role?.toLowerCase();
+                          if (serverRole === "admin") navigate("/admin");
+                          else if (serverRole === "candidate") navigate("/candidate");
+                          else if (serverRole === "employer") navigate("/employer");
+                        } catch (err) {
+                          console.error(err);
+                          toast.error("Không thể kết nối đến máy chủ.");
+                        } finally {
+                          setLoading(false);
+                        }
+                      }
+                    });
+                    googleClient.prompt();
                   }}>
                   
                       <svg className="w-5 h-5" viewBox="0 0 24 24">
