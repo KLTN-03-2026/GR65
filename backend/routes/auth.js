@@ -4,6 +4,10 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { sql, poolPromise } = require('../db');
 const { logActivity } = require('../utils/logger');
+const nodemailer = require('nodemailer');
+
+// In-memory OTP store (production nên dùng Redis)
+const otpStore = new Map();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_jwt_key_here';
 
@@ -304,6 +308,111 @@ router.post('/login', async (req, res) => {
 
   } catch (err) {
     console.error('Lỗi khi đăng nhập:', err);
+    res.status(500).json({ message: 'Lỗi hệ thống.' });
+  }
+});
+
+// ── QUÊN MẬT KHẨU — GỬI OTP ────────────────────
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Vui lòng nhập email.' });
+
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input('Email', sql.NVarChar, email)
+      .query('SELECT Id, AuthProvider FROM Users WHERE Email = @Email');
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ message: 'Email không tồn tại trong hệ thống.' });
+    }
+
+    const user = result.recordset[0];
+    if (user.AuthProvider === 'google') {
+      return res.status(400).json({ message: 'Tài khoản này đăng nhập bằng Google. Vui lòng đăng nhập bằng Google.' });
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 phút
+    otpStore.set(email, { otp, expiresAt, verified: false });
+
+    // Send email
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.SMTP_EMAIL, pass: process.env.SMTP_PASSWORD }
+    });
+
+    await transporter.sendMail({
+      from: `"AIRecruit" <${process.env.SMTP_EMAIL}>`,
+      to: email,
+      subject: 'Mã OTP đặt lại mật khẩu - AIRecruit',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px">
+          <h2 style="color:#4f46e5;text-align:center">🔐 Đặt lại mật khẩu</h2>
+          <p style="text-align:center;color:#6b7280">Mã xác nhận của bạn là:</p>
+          <div style="text-align:center;font-size:32px;font-weight:bold;letter-spacing:8px;color:#1f2937;padding:16px;background:#f3f4f6;border-radius:8px;margin:16px 0">${otp}</div>
+          <p style="text-align:center;color:#ef4444;font-size:14px">⏱ Mã OTP hết hạn sau 5 phút</p>
+          <p style="text-align:center;color:#9ca3af;font-size:12px">Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.</p>
+        </div>
+      `
+    });
+
+    res.json({ message: 'Mã OTP đã được gửi đến email của bạn.' });
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    res.status(500).json({ message: 'Lỗi hệ thống khi gửi OTP.' });
+  }
+});
+
+// ── XÁC NHẬN OTP ────────────────────────────────
+router.post('/verify-otp', async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) return res.status(400).json({ message: 'Thiếu email hoặc mã OTP.' });
+
+    const stored = otpStore.get(email);
+    if (!stored) return res.status(400).json({ message: 'Không tìm thấy mã OTP. Vui lòng gửi lại.' });
+    if (Date.now() > stored.expiresAt) {
+      otpStore.delete(email);
+      return res.status(400).json({ message: 'Mã OTP đã hết hạn. Vui lòng gửi lại.' });
+    }
+    if (stored.otp !== otp) return res.status(400).json({ message: 'Mã OTP không chính xác.' });
+
+    // Mark as verified
+    otpStore.set(email, { ...stored, verified: true });
+    res.json({ message: 'Xác nhận OTP thành công.' });
+  } catch (err) {
+    console.error('Verify OTP error:', err);
+    res.status(500).json({ message: 'Lỗi hệ thống.' });
+  }
+});
+
+// ── ĐẶT LẠI MẬT KHẨU ──────────────────────────
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+    if (!email || !newPassword) return res.status(400).json({ message: 'Thiếu thông tin.' });
+    if (newPassword.length < 6) return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 6 ký tự.' });
+
+    const stored = otpStore.get(email);
+    if (!stored || !stored.verified) {
+      return res.status(403).json({ message: 'Chưa xác nhận OTP. Vui lòng thực hiện lại.' });
+    }
+
+    const pool = await poolPromise;
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    await pool.request()
+      .input('Email', sql.NVarChar, email)
+      .input('PasswordHash', sql.NVarChar, hashedPassword)
+      .query('UPDATE Users SET PasswordHash = @PasswordHash, UpdatedAt = GETDATE() WHERE Email = @Email');
+
+    otpStore.delete(email);
+    res.json({ message: 'Đặt lại mật khẩu thành công!' });
+  } catch (err) {
+    console.error('Reset password error:', err);
     res.status(500).json({ message: 'Lỗi hệ thống.' });
   }
 });

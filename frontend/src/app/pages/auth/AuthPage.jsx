@@ -27,7 +27,12 @@ export function AuthPage() {
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
+  const [forgotStep, setForgotStep] = useState(1); // 1=email, 2=otp, 3=newPassword
+  const [otpValues, setOtpValues] = useState(['','','','','','']);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [showConfirmNew, setShowConfirmNew] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -52,9 +57,44 @@ export function AuthPage() {
 
     try {
       if (mode === "forgot") {
-        // Chưa implement - chỉ hiển thị thông báo
-        await new Promise((r) => setTimeout(r, 800));
-        setEmailSent(true);
+        if (forgotStep === 1) {
+          // Step 1: Gửi OTP
+          const res = await fetch(`${API_URL}/api/auth/forgot-password`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: form.email })
+          });
+          const data = await res.json();
+          if (!res.ok) { toast.error(data.message); return; }
+          toast.success("Mã OTP đã được gửi đến email!");
+          setForgotStep(2);
+        } else if (forgotStep === 2) {
+          // Step 2: Xác nhận OTP
+          const otp = otpValues.join('');
+          if (otp.length !== 6) { toast.error("Vui lòng nhập đủ 6 số OTP."); return; }
+          const res = await fetch(`${API_URL}/api/auth/verify-otp`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: form.email, otp })
+          });
+          const data = await res.json();
+          if (!res.ok) { toast.error(data.message); return; }
+          toast.success("Xác nhận OTP thành công!");
+          setForgotStep(3);
+        } else if (forgotStep === 3) {
+          // Step 3: Đặt lại mật khẩu
+          if (newPassword !== confirmNewPassword) { toast.error("Mật khẩu xác nhận không khớp!"); return; }
+          if (newPassword.length < 6) { toast.error("Mật khẩu phải có ít nhất 6 ký tự."); return; }
+          const res = await fetch(`${API_URL}/api/auth/reset-password`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: form.email, newPassword })
+          });
+          const data = await res.json();
+          if (!res.ok) { toast.error(data.message); return; }
+          toast.success("Đặt lại mật khẩu thành công! Vui lòng đăng nhập.");
+          setMode("login"); setForgotStep(1); setOtpValues(['','','','','','']); setNewPassword(''); setConfirmNewPassword('');
+        }
         return;
       }
 
@@ -217,26 +257,80 @@ export function AuthPage() {
               </span>
             </div>
 
-            {/* Email sent state */}
-            {emailSent ?
-            <div className="text-center py-8">
-                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle className="w-8 h-8 text-emerald-600" />
+            {/* OTP Step 2 - Nhập mã OTP */}
+            {mode === "forgot" && forgotStep === 2 ?
+            <div className="text-center py-4">
+                <div className="w-14 h-14 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Mail className="w-7 h-7 text-indigo-600" />
                 </div>
-                <h2 className="text-gray-900 mb-2">Email đã được gửi!</h2>
-                <p className="text-sm text-gray-500 mb-6">
-                  Vui lòng kiểm tra hộp thư <strong>{form.email}</strong> để đặt
-                  lại mật khẩu.
-                </p>
-                <button
-                onClick={() => {
-                  setEmailSent(false);
-                  setMode("login");
-                }}
-                className="text-indigo-600 hover:text-indigo-700 text-sm flex items-center gap-2 mx-auto">
-                
-                  <ArrowLeft className="w-4 h-4" /> Quay lại đăng nhập
-                </button>
+                <h2 className="text-gray-900 mb-1" style={{ fontWeight: 600 }}>Nhập mã OTP</h2>
+                <p className="text-sm text-gray-500 mb-6">Mã xác nhận 6 số đã gửi đến<br/><strong>{form.email}</strong></p>
+                <form onSubmit={handleSubmit}>
+                  <div className="flex justify-center gap-2 mb-4">
+                    {otpValues.map((val, i) => (
+                      <input key={i} id={`otp-${i}`} type="text" maxLength={1} value={val}
+                        className="w-12 h-14 text-center text-xl font-bold border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors"
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/\D/g, '');
+                          const newOtp = [...otpValues]; newOtp[i] = v; setOtpValues(newOtp);
+                          if (v && i < 5) document.getElementById(`otp-${i+1}`)?.focus();
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Backspace' && !otpValues[i] && i > 0) document.getElementById(`otp-${i-1}`)?.focus();
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 mb-4">⏱ Mã OTP hết hạn sau 5 phút</p>
+                  <button type="submit" disabled={loading}
+                    className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                    {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : "Xác nhận OTP"}
+                  </button>
+                </form>
+                <button onClick={() => { setForgotStep(1); setOtpValues(['','','','','','']); handleSubmit({ preventDefault: () => {} }); }}
+                  className="text-indigo-600 hover:text-indigo-700 text-sm mt-4 inline-block">Gửi lại mã OTP</button>
+              </div> :
+
+            /* OTP Step 3 - Đặt mật khẩu mới */
+            mode === "forgot" && forgotStep === 3 ?
+            <div className="py-4">
+                <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="w-7 h-7 text-emerald-600" />
+                </div>
+                <h2 className="text-gray-900 mb-1 text-center" style={{ fontWeight: 600 }}>Đặt mật khẩu mới</h2>
+                <p className="text-sm text-gray-500 mb-6 text-center">Nhập mật khẩu mới cho tài khoản <strong>{form.email}</strong></p>
+                <form onSubmit={handleSubmit}>
+                  <div className="mb-4">
+                    <label className="text-sm text-gray-700 mb-1.5 block">Mật khẩu mới</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input type={showNewPass ? "text" : "password"} value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                        placeholder="Tối thiểu 6 ký tự" required />
+                      <button type="button" onClick={() => setShowNewPass(!showNewPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mb-6">
+                    <label className="text-sm text-gray-700 mb-1.5 block">Xác nhận mật khẩu</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input type={showConfirmNew ? "text" : "password"} value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                        placeholder="Nhập lại mật khẩu" required />
+                      <button type="button" onClick={() => setShowConfirmNew(!showConfirmNew)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        {showConfirmNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <button type="submit" disabled={loading}
+                    className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                    {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : "Đặt lại mật khẩu"}
+                  </button>
+                </form>
               </div> :
 
             <>
@@ -262,7 +356,7 @@ export function AuthPage() {
                   "Đăng nhập để tiếp tục" :
                   mode === "register" ?
                   "Điền thông tin để bắt đầu" :
-                  "Nhập email để nhận link đặt lại mật khẩu"}
+                  "Nhập email để nhận mã OTP đặt lại mật khẩu"}
                   </p>
                 </div>
 
@@ -610,7 +704,7 @@ export function AuthPage() {
                     "Đăng nhập" :
                     mode === "register" ?
                     "Tạo tài khoản" :
-                    "Gửi email đặt lại"}
+                    "Gửi mã OTP"}
                       </>
                   }
                   </button>
