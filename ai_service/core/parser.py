@@ -18,19 +18,18 @@ pytesseract.pytesseract.tesseract_cmd = r'F:\OCR\tesseract.exe'
 OLLAMA_MODEL = "qwen2:1.5b"
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 
-prompt_template = """Bạn là một chuyên gia đánh giá CV nhân sự.
-Dưới đây là nội dung văn bản của một CV ứng viên. Bạn hãy phân tích và đọc hiểu, sau đó trả về ĐÚNG MỘT khối JSON chứa các thông tin sau (chỉ trả về JSON thuần túy, tuyệt đối KHÔNG có markdown, KHÔNG có chữ nào khác ngoài JSON):
+prompt_template = """Dưới đây là nội dung CV của ứng viên. Hãy phân tích và trích xuất thông tin thành ĐÚNG MỘT khối JSON hợp lệ. KHÔNG giải thích thêm.
+Cấu trúc JSON BẮT BUỘC phải theo mẫu sau, NHƯNG BẠN PHẢI ĐIỀN THÔNG TIN THỰC TẾ LẤY TỪ CV VÀO (Không được chép lại chữ trong mẫu):
 {
-  "skills": ["kỹ năng 1", "kỹ năng 2"],
-  "experience": "tóm tắt kinh nghiệm 1-2 câu",
-  "education": "thông tin học vấn",
-  "languages": ["ngôn ngữ 1"],
-  "aiScore": 85,
-  "summary": "tóm tắt năng lực trong 1 câu"
+  "skills": ["<danh sách kỹ năng có trong CV>"],
+  "experience": "<tóm tắt ngắn gọn kinh nghiệm làm việc>",
+  "education": "<tóm tắt trường học, bằng cấp>",
+  "languages": ["<các ngôn ngữ ứng viên biết>"],
+  "aiScore": <chấm điểm CV từ 0 đến 100>,
+  "summary": "<viết 1 câu tóm tắt năng lực>"
 }
-Lưu ý: aiScore đánh giá từ 0-100 dựa trên sự chuyên nghiệp. Nếu thông tin nào không có, hãy để trống hoặc null.
 
-Text CV để bạn phân tích:
+Nội dung CV thực tế:
 """
 
 def extract_text(file_path: str, ext: str, fmt: str) -> str:
@@ -70,7 +69,12 @@ def call_ollama(prompt_text: str) -> str:
     payload = {
         "model": OLLAMA_MODEL,
         "prompt": prompt_text,
-        "stream": False
+        "stream": False,
+        "options": {
+            "num_predict": 800,  # Nới lỏng số token để AI có thể liệt kê đủ skill/kinh nghiệm
+            "temperature": 0.3,  # Tăng một chút độ sáng tạo để AI không copy y hệt prompt
+            "num_ctx": 3072
+        }
     }
     
     try:
@@ -95,7 +99,7 @@ def parse_cv_ai(file_path: str, fmt: str):
         raise ValueError("AI không thể đọc được một chữ nào trong file này (có thể ảnh mờ hoặc lỗi).")
             
     # 2. Ráp thông tin vào Prompt gửi cho não Ollama
-    final_prompt = prompt_template + extracted_text[:4000] # Qwen ngữ cảnh giới hạn nên lấy max 4000 ký tự đầu
+    final_prompt = prompt_template + extracted_text[:3000] # Giảm xuống 3000 ký tự đầu để tăng tốc độ đọc của AI
     
     # Kêu gọi Ollama suy nghĩ
     logger.info(f"Đang gửi {len(extracted_text)} ký tự CV sang bộ não Ollama Qwen2...")

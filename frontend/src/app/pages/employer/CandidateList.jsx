@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Brain, Mail, MapPin, Briefcase,
   Search, Download, ChevronDown, User, Zap,
-  Calendar, FileText 
+  Calendar, FileText, X, Video, Phone, Loader2, Clock
 } from "lucide-react";
 import { toast } from "sonner";
 import api from "../../../lib/api";
@@ -45,8 +45,51 @@ export function CandidateList() {
   // Gom nhóm các application theo ứng viên nếu 1 ứng viên nộp nhiều job
   const getCandidateApplications = (id) => candidates.filter((a) => a.candidateId === id);
 
-  const handleContact = (name) => {
-    toast.success(`Đã gửi email mời phỏng vấn tới ${name}!`);
+  // ── Interview scheduling state ──
+  const [showInterviewModal, setShowInterviewModal] = useState(false);
+  const [interviewTarget, setInterviewTarget] = useState(null);
+  const [interviewForm, setInterviewForm] = useState({ date: '', time: '09:00', type: 'video', location: '', interviewer: '', notes: '' });
+  const [submittingInterview, setSubmittingInterview] = useState(false);
+
+  const handleOpenInterview = (candidate) => {
+    setInterviewTarget(candidate);
+    setInterviewForm({ date: '', time: '09:00', type: 'video', location: '', interviewer: '', notes: '' });
+    setShowInterviewModal(true);
+  };
+
+  const handleScheduleInterview = async (e) => {
+    e.preventDefault();
+    if (!interviewTarget) return;
+    setSubmittingInterview(true);
+    try {
+      await api.post('/api/interviews', {
+        applicationId: interviewTarget.applicationId,
+        date: interviewForm.date,
+        time: interviewForm.time,
+        type: interviewForm.type,
+        location: interviewForm.location,
+        interviewer: interviewForm.interviewer,
+        notes: interviewForm.notes
+      });
+      toast.success(`Đã đặt lịch phỏng vấn và gửi email mời tới ${interviewTarget.name}!`);
+      setShowInterviewModal(false);
+      setInterviewTarget(null);
+      fetchCandidates();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Lỗi khi đặt lịch phỏng vấn');
+    } finally {
+      setSubmittingInterview(false);
+    }
+  };
+
+  const handleContact = async (name) => {
+    if (!selectedCandidate) return;
+    try {
+      const res = await api.post(`/api/applications/${selectedCandidate.applicationId}/contact`, {});
+      toast.success(res.data?.message || `Đã gửi email liên hệ tới ${name}!`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Lỗi khi gửi email");
+    }
   };
 
   const handleUpdateStage = async (appId, newStage) => {
@@ -205,9 +248,15 @@ export function CandidateList() {
                   <button onClick={() => handleContact(selectedCandidate.name)} className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm transition-colors">
                     <Mail className="w-4 h-4" /> Gửi email mời
                   </button>
-                  <button onClick={() => handleUpdateStage(selectedCandidate.applicationId, 'interview')} className="flex-1 flex items-center justify-center gap-2 border border-indigo-200 text-indigo-600 hover:bg-indigo-50 py-2.5 rounded-xl text-sm transition-colors">
-                    <Calendar className="w-4 h-4" /> Duyệt & Đặt PV
-                  </button>
+                  {['pending', 'reviewing'].includes(selectedCandidate.stage) ? (
+                    <button onClick={() => handleOpenInterview(selectedCandidate)} className="flex-1 flex items-center justify-center gap-2 border border-indigo-200 text-indigo-600 hover:bg-indigo-50 py-2.5 rounded-xl text-sm transition-colors">
+                      <Calendar className="w-4 h-4" /> Đặt lịch PV
+                    </button>
+                  ) : selectedCandidate.stage === 'interview' ? (
+                    <div className="flex-1 flex items-center justify-center gap-2 bg-indigo-50 text-indigo-600 py-2.5 rounded-xl text-sm">
+                      <Clock className="w-4 h-4" /> Đã có lịch PV
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -252,5 +301,74 @@ export function CandidateList() {
           }
         </div>
       </div>
+
+      {/* Interview Scheduling Modal */}
+      {showInterviewModal && interviewTarget && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <div>
+                <h3 className="text-gray-900" style={{ fontWeight: 600 }}>Đặt lịch phỏng vấn</h3>
+                <p className="text-xs text-gray-400 mt-0.5">{interviewTarget.name} — {interviewTarget.jobTitle}</p>
+              </div>
+              <button onClick={() => setShowInterviewModal(false)} className="p-2 hover:bg-gray-100 rounded-xl text-gray-500">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleScheduleInterview} className="p-5 space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-xl">
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-sm flex-shrink-0" style={{ fontWeight: 700, backgroundColor: '#6366f1' }}>
+                  {typeof interviewTarget.avatar === 'string' && interviewTarget.avatar.length === 1 ? interviewTarget.avatar : <User className="w-5 h-5" />}
+                </div>
+                <div>
+                  <div className="text-sm text-gray-900" style={{ fontWeight: 600 }}>{interviewTarget.name}</div>
+                  <div className="text-xs text-indigo-600">{interviewTarget.jobTitle}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-gray-700 mb-1 block">Ngày *</label>
+                  <input type="date" value={interviewForm.date} onChange={(e) => setInterviewForm(f => ({...f, date: e.target.value}))} required className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-700 mb-1 block">Giờ *</label>
+                  <input type="time" value={interviewForm.time} onChange={(e) => setInterviewForm(f => ({...f, time: e.target.value}))} required className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-700 mb-1 block">Hình thức</label>
+                  <select value={interviewForm.type} onChange={(e) => setInterviewForm(f => ({...f, type: e.target.value}))} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                    <option value="video">Video call</option>
+                    <option value="onsite">Tại văn phòng</option>
+                    <option value="phone">Điện thoại</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-700 mb-1 block">Người PV</label>
+                  <input value={interviewForm.interviewer} onChange={(e) => setInterviewForm(f => ({...f, interviewer: e.target.value}))} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="HR Manager" />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-sm text-gray-700 mb-1 block">Địa điểm / Link</label>
+                  <input value={interviewForm.location} onChange={(e) => setInterviewForm(f => ({...f, location: e.target.value}))} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="https://meet.google.com/..." />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-sm text-gray-700 mb-1 block">Ghi chú</label>
+                  <textarea value={interviewForm.notes} onChange={(e) => setInterviewForm(f => ({...f, notes: e.target.value}))} rows={2} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="Vòng 1 - Technical..." />
+                </div>
+              </div>
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-2.5 text-xs text-indigo-600 flex items-center gap-2">
+                <Mail className="w-4 h-4 flex-shrink-0" />
+                Email xác nhận sẽ tự động gửi tới ứng viên
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setShowInterviewModal(false)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm hover:bg-gray-50">Hủy</button>
+                <button type="submit" disabled={submittingInterview} className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+                  {submittingInterview ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calendar className="w-4 h-4" />}
+                  {submittingInterview ? 'Đang xử lý...' : 'Đặt lịch PV'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>);
 }

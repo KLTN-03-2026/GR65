@@ -51,9 +51,11 @@ export function AccountManagement() {
 
   const handleToggleStatus = async (userId, currentStatus, name) => {
     const newStatus = currentStatus === "active" ? "suspended" : "active";
+    const action = newStatus === "active" ? "mở khóa" : "khóa";
+    if (!window.confirm(`Bạn có chắc chắn muốn ${action} tài khoản "${name}" không?`)) return;
     try {
       await api.patch(`/api/admin/users/${userId}/status`, { status: newStatus });
-      toast.success(`Tài khoản ${name} đã được ${newStatus === "active" ? "mở khóa" : "khóa"}`);
+      toast.success(`Tài khoản ${name} đã được ${action}`);
       // Update local state
       setUsers(prev => prev.map(u =>
         u.Id === userId ? { ...u, Status: newStatus } : u

@@ -316,4 +316,129 @@ router.patch('/:id/stage', async (req, res) => {
   }
 });
 
+// ────────────────────────────────────────────────
+// GET /api/applications/candidate/me – Lấy DS ứng tuyển của ứng viên đang đăng nhập
+// ────────────────────────────────────────────────
+router.get('/candidate/me', async (req, res) => {
+  try {
+    const { id: candidateId, role } = req.user;
+    if (role !== 'Candidate') return res.status(403).json({ message: 'Không có quyền.' });
+
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input('CandidateId', sql.UniqueIdentifier, candidateId)
+      .query(`
+        SELECT 
+          a.Id, a.Stage AS Status, a.AIMatchScore, a.CvRead, a.InterviewDate, a.AppliedDate,
+          j.Title AS JobTitle, j.Id AS JobId,
+          e.CompanyName, e.LogoUrl
+        FROM Applications a
+        INNER JOIN Jobs j ON a.JobId = j.Id
+        INNER JOIN Employers e ON j.EmployerId = e.UserId
+        WHERE a.CandidateId = @CandidateId
+        ORDER BY a.AppliedDate DESC
+      `);
+
+    const apps = result.recordset.map(a => ({
+      id: a.Id,
+      jobId: a.JobId,
+      jobTitle: a.JobTitle,
+      companyName: a.CompanyName,
+      companyLogo: a.LogoUrl,
+      status: a.Status,
+      aiScore: a.AIMatchScore || 0,
+      cvRead: !!a.CvRead,
+      interviewDate: a.InterviewDate,
+      appliedDate: a.AppliedDate
+    }));
+
+    res.json(apps);
+  } catch (err) {
+    console.error('Lỗi lấy lịch sử ứng tuyển:', err);
+    res.status(500).json({ message: 'Lỗi hệ thống' });
+  }
+});
+
+// ────────────────────────────────────────────────
+// POST /api/applications/:id/contact – Employer gửi email liên hệ ứng viên
+// ────────────────────────────────────────────────
+router.post('/:id/contact', async (req, res) => {
+  try {
+    const { id: employerId, role } = req.user;
+    if (role !== 'Employer') return res.status(403).json({ message: 'Không có quyền.' });
+
+    const appId = req.params.id;
+    const { subject, message } = req.body;
+    const pool = await poolPromise;
+
+    // Lấy thông tin ứng viên + employer
+    const result = await pool.request()
+      .input('appId', sql.UniqueIdentifier, appId)
+      .input('employerId', sql.UniqueIdentifier, employerId)
+      .query(`
+        SELECT a.Id, u.Email AS CandidateEmail, u.Name AS CandidateName,
+               j.Title AS JobTitle,
+               e.Name AS EmployerName, eu.Email AS EmployerEmail
+        FROM Applications a
+        JOIN Users u ON a.CandidateId = u.Id
+        JOIN Jobs j ON a.JobId = j.Id
+        JOIN Users e ON j.EmployerId = e.Id
+        JOIN Users eu ON j.EmployerId = eu.Id
+        WHERE a.Id = @appId AND j.EmployerId = @employerId
+      `);
+
+    if (!result.recordset.length) {
+      return res.status(404).json({ message: 'Không tìm thấy ứng viên.' });
+    }
+
+    const app = result.recordset[0];
+    const { sendEmail } = require('../utils/email');
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+    const emailSubject = subject || `[${app.EmployerName}] Thông báo về vị trí ${app.JobTitle}`;
+    const emailMessage = message || `Chào ${app.CandidateName}, chúng tôi muốn liên hệ với bạn về vị trí ${app.JobTitle}.`;
+
+    const html = `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f8fafc; border-radius: 16px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); padding: 32px; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 24px;">📧 Tin nhắn từ Nhà tuyển dụng</h1>
+        </div>
+        <div style="padding: 32px;">
+          <p style="color: #374151; font-size: 16px; line-height: 1.6;">Xin chào <strong>${app.CandidateName}</strong>,</p>
+          <p style="color: #4b5563; font-size: 15px; line-height: 1.8;">${emailMessage}</p>
+          <div style="background: #eef2ff; border-radius: 12px; padding: 20px; margin: 24px 0;">
+            <p style="margin: 0 0 8px; color: #6366f1; font-weight: 600;">📋 Vị trí: ${app.JobTitle}</p>
+            <p style="margin: 0; color: #6366f1;">🏢 Công ty: ${app.EmployerName}</p>
+          </div>
+          <a href="${frontendUrl}/candidate/applications" style="display: inline-block; background: #6366f1; color: white; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-weight: 600;">Xem chi tiết trên AI Recruit</a>
+          <p style="color: #9ca3af; font-size: 13px; margin-top: 24px;">Email này được gửi từ hệ thống AI Recruit.</p>
+        </div>
+      </div>
+    `;
+
+    await sendEmail(app.CandidateEmail, emailSubject, emailMessage, html);
+
+    // Tạo notification cho ứng viên
+    const candidateResult = await pool.request()
+      .input('appId2', sql.UniqueIdentifier, appId)
+      .query(`SELECT CandidateId FROM Applications WHERE Id = @appId2`);
+
+    if (candidateResult.recordset.length) {
+      await pool.request()
+        .input('nId', sql.UniqueIdentifier, require('crypto').randomUUID())
+        .input('userId', sql.UniqueIdentifier, candidateResult.recordset[0].CandidateId)
+        .input('type', sql.NVarChar, 'application_status')
+        .input('title', sql.NVarChar, `Tin nhắn từ ${app.EmployerName}`)
+        .input('message', sql.NVarChar, `Nhà tuyển dụng ${app.EmployerName} đã gửi tin nhắn liên quan đến vị trí ${app.JobTitle}.`)
+        .query(`INSERT INTO Notifications (Id, UserId, Type, Title, Message, IsRead, CreatedDate)
+                VALUES (@nId, @userId, @type, @title, @message, 0, GETDATE())`);
+    }
+
+    res.json({ message: `Đã gửi email tới ${app.CandidateName} (${app.CandidateEmail})` });
+  } catch (err) {
+    console.error('Lỗi gửi email liên hệ:', err);
+    res.status(500).json({ message: 'Lỗi hệ thống khi gửi email' });
+  }
+});
+
 module.exports = router;

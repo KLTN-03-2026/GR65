@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import {
   User, Mail, Phone, MapPin, Briefcase, GraduationCap, Link2, Lock,
-  Save, Camera, Plus, X, CheckCircle, DollarSign, Clock, Github,
-  Linkedin, Globe, Eye, EyeOff, Sparkles, Shield, AlertCircle, Loader2 } from
+  Save, Camera, Plus, X, CheckCircle, DollarSign, Clock,
+  Eye, EyeOff, Sparkles, Shield, AlertCircle, Loader2 } from
 "lucide-react";
 import { toast } from "sonner";
 
@@ -24,6 +24,7 @@ export function CandidateProfile() {
   const [activeTab, setActiveTab] = useState("personal");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [aiScore, setAiScore] = useState(0);
   const [showSkillInput, setShowSkillInput] = useState(false);
   const [skillInput, setSkillInput] = useState("");
   const [showCurrentPass, setShowCurrentPass] = useState(false);
@@ -57,10 +58,7 @@ export function CandidateProfile() {
     major: "",
     degree: "",
     graduationYear: "",
-    portfolio: "",
-    linkedin: "",
-    github: "",
-    website: ""
+    links: [{ name: "", url: "" }] // Mặc định luôn có sẵn 1 ô trống
   });
 
   const [security, setSecurity] = useState({
@@ -105,14 +103,43 @@ export function CandidateProfile() {
           salaryMax: p.expectedSalary ? p.expectedSalary.split("-")[1]?.trim() : "",
         }));
 
+        // Lấy AI Score thật từ API
+        setAiScore(p.aiScore || 0);
+
         // Điền dữ liệu học vấn (nếu có)
         if (p.education) {
           try {
-            const eduParsed = JSON.parse(p.education);
-            setEducation((prev) => ({ ...prev, ...eduParsed }));
+            const eduParsed = typeof p.education === "string"
+              ? JSON.parse(p.education)
+              : p.education;
+            const safeStr = (val) =>
+              val == null ? "" : typeof val === "object" ? (val.degree || val.school || val.major || JSON.stringify(val)) : String(val);
+
+            // Chuyển links từ format cũ sang mảng mới
+            let links = [];
+            if (Array.isArray(eduParsed.links) && eduParsed.links.length > 0) {
+              links = eduParsed.links;
+            } else if (eduParsed.portfolio || eduParsed.linkedin || eduParsed.github || eduParsed.website) {
+              // Tương thích ngược với data cũ
+              if (eduParsed.portfolio) links.push({ name: "Portfolio", url: safeStr(eduParsed.portfolio) });
+              if (eduParsed.linkedin) links.push({ name: "LinkedIn", url: safeStr(eduParsed.linkedin) });
+              if (eduParsed.github) links.push({ name: "GitHub", url: safeStr(eduParsed.github) });
+              if (eduParsed.website) links.push({ name: "Website", url: safeStr(eduParsed.website) });
+            } else {
+              // Nếu hoàn toàn chưa có link nào, hiển thị sẵn 1 ô trống
+              links = [{ name: "", url: "" }];
+            }
+
+            setEducation((prev) => ({
+              ...prev,
+              school: safeStr(eduParsed.school),
+              major: safeStr(eduParsed.major),
+              degree: safeStr(eduParsed.degree),
+              graduationYear: safeStr(eduParsed.graduationYear),
+              links,
+            }));
           } catch {
-            // education là plain text, đặt vào school
-            setEducation((prev) => ({ ...prev, school: p.education }));
+            setEducation((prev) => ({ ...prev, school: String(p.education) }));
           }
         }
       } catch (err) {
@@ -139,10 +166,7 @@ export function CandidateProfile() {
         major: education.major,
         degree: education.degree,
         graduationYear: education.graduationYear,
-        portfolio: education.portfolio,
-        linkedin: education.linkedin,
-        github: education.github,
-        website: education.website,
+        links: education.links.filter(l => l.name || l.url), // Chỉ lưu link có dữ liệu
       });
 
       const res = await fetch(`${API_URL}/api/profile/me`, {
@@ -241,9 +265,24 @@ export function CandidateProfile() {
   { label: "Tóm tắt bản thân", done: !!profile.summary },
   { label: "Kỹ năng", done: career.skills.length > 0 },
   { label: "Học vấn", done: !!education.school },
-  { label: "Portfolio/Liên kết", done: !!education.portfolio || !!education.linkedin }];
+  { label: "Portfolio/Liên kết", done: education.links.length > 0 }];
 
   const completionPct = Math.round(completionItems.filter((i) => i.done).length / completionItems.length * 100);
+
+  // Hàm quản lý links
+  const addLink = () => {
+    setEducation((prev) => ({ ...prev, links: [...prev.links, { name: "", url: "" }] }));
+  };
+  const updateLink = (index, field, value) => {
+    setEducation((prev) => {
+      const newLinks = [...prev.links];
+      newLinks[index] = { ...newLinks[index], [field]: value };
+      return { ...prev, links: newLinks };
+    });
+  };
+  const removeLink = (index) => {
+    setEducation((prev) => ({ ...prev, links: prev.links.filter((_, i) => i !== index) }));
+  };
 
   if (loading) {
     return (
@@ -262,9 +301,26 @@ export function CandidateProfile() {
           <h1 className="text-gray-900">Hồ sơ cá nhân</h1>
           <p className="text-sm text-gray-500 mt-1">Cập nhật thông tin để AI matching hiệu quả hơn</p>
         </div>
-        <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2">
-          <Sparkles className="w-4 h-4 text-indigo-500" />
-          <span className="text-sm text-indigo-700" style={{ fontWeight: 600 }}>AI Score: 94%</span>
+        <div className={`flex items-center gap-2 rounded-xl px-3 py-2 border ${
+          aiScore >= 70 ? 'bg-emerald-50 border-emerald-100' :
+          aiScore >= 40 ? 'bg-amber-50 border-amber-100' :
+          aiScore > 0 ? 'bg-red-50 border-red-100' :
+          'bg-gray-50 border-gray-200'
+        }`}>
+          <Sparkles className={`w-4 h-4 ${
+            aiScore >= 70 ? 'text-emerald-500' :
+            aiScore >= 40 ? 'text-amber-500' :
+            aiScore > 0 ? 'text-red-500' :
+            'text-gray-400'
+          }`} />
+          <span className={`text-sm ${
+            aiScore >= 70 ? 'text-emerald-700' :
+            aiScore >= 40 ? 'text-amber-700' :
+            aiScore > 0 ? 'text-red-700' :
+            'text-gray-500'
+          }`} style={{ fontWeight: 600 }}>
+            {aiScore > 0 ? `AI Score: ${aiScore}%` : 'Chưa có AI Score'}
+          </span>
         </div>
       </div>
 
@@ -654,28 +710,60 @@ export function CandidateProfile() {
                   </div>
 
                   <div className="border-t border-gray-100 pt-6">
-                    <h3 className="text-sm text-gray-900 mb-4" style={{ fontWeight: 600 }}>Liên kết & Mạng xã hội</h3>
-                    <div className="space-y-4">
-                      {[
-                    { key: "portfolio", label: "Portfolio / Website cá nhân", icon: Globe, placeholder: "https://portfolio.example.com" },
-                    { key: "linkedin", label: "LinkedIn", icon: Linkedin, placeholder: "https://linkedin.com/in/username" },
-                    { key: "github", label: "GitHub", icon: Github, placeholder: "https://github.com/username" },
-                    { key: "website", label: "Liên kết khác", icon: Link2, placeholder: "https://..." }].
-                    map(({ key, label, icon: Icon, placeholder }) =>
-                    <div key={key}>
-                          <label className="block text-xs text-gray-500 mb-1.5" style={{ fontWeight: 500 }}>{label}</label>
-                          <div className="relative">
-                            <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                            <input
-                          value={education[key]}
-                          onChange={(e) => setEducation((p) => ({ ...p, [key]: e.target.value }))}
-                          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-                          placeholder={placeholder}
-                          type="url" />
-                        
-                          </div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm text-gray-900" style={{ fontWeight: 600 }}>Liên kết & Mạng xã hội</h3>
+                      <button
+                        onClick={addLink}
+                        className="text-xs text-indigo-600 flex items-center gap-1 hover:text-indigo-700"
+                      >
+                        <Plus className="w-3 h-3" /> Thêm liên kết
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {education.links.length === 0 && (
+                        <div className="text-center py-6 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                          <p className="text-sm text-gray-400">Bạn đã xóa hết liên kết.</p>
+                          <button
+                            onClick={addLink}
+                            className="mt-2 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                          >
+                            + Bấm vào đây để thêm lại
+                          </button>
                         </div>
-                    )}
+                      )}
+
+                      {education.links.map((link, index) => (
+                        <div key={index} className="flex items-start gap-2 bg-gray-50 rounded-xl p-3 border border-gray-100">
+                          <Link2 className="w-4 h-4 text-gray-400 mt-2.5 flex-shrink-0" />
+                          <div className="flex-1 grid sm:grid-cols-5 gap-2">
+                            <div className="sm:col-span-2">
+                              <input
+                                value={link.name}
+                                onChange={(e) => updateLink(index, "name", e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 bg-white"
+                                placeholder="Tên (VD: LinkedIn, GitHub...)"
+                              />
+                            </div>
+                            <div className="sm:col-span-3">
+                              <input
+                                value={link.url}
+                                onChange={(e) => updateLink(index, "url", e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 bg-white"
+                                placeholder="https://..."
+                                type="url"
+                              />
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => removeLink(index)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors mt-1 flex-shrink-0"
+                            title="Xóa liên kết"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
 

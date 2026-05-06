@@ -44,6 +44,23 @@ async function initializeDatabase() {
       console.log('Database schema synchronization completed.');
     }
 
+    // Đảm bảo cột GoogleId và AuthProvider tồn tại (cho Google SSO)
+    // Đảm bảo cột Status tồn tại trong bảng CVs và Jobs cho kiểm duyệt
+    const alterQueries = [
+      `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Users') AND name = 'AuthProvider')
+       ALTER TABLE Users ADD AuthProvider NVARCHAR(50) DEFAULT 'local'`,
+      `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Users') AND name = 'GoogleId')
+       ALTER TABLE Users ADD GoogleId NVARCHAR(255) NULL`,
+      `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CVs') AND name = 'Status')
+       ALTER TABLE CVs ADD Status NVARCHAR(50) DEFAULT 'approved' CHECK (Status IN ('pending', 'approved', 'rejected'))`,
+      `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Jobs') AND name = 'Status')
+       ALTER TABLE Jobs ADD Status NVARCHAR(50) DEFAULT 'active' CHECK (Status IN ('active', 'closed', 'draft', 'pending', 'rejected'))`
+    ];
+    for (const q of alterQueries) {
+      try { await pool.request().query(q); } catch (e) { console.warn('Alter query warning:', e.message); }
+    }
+    console.log('Database columns ensured.');
+
     // Seed Roles
     const roles = [
       { name: 'Admin', desc: 'System Administrator', isSystem: 1 },

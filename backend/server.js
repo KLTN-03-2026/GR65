@@ -29,6 +29,8 @@ app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/cv', require('./routes/cv'));
 app.use('/api/applications', require('./routes/applications'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/interviews', require('./routes/interviews'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 // Phục vụ file tĩnh (CV uploads)
 app.use('/uploads', express.static('uploads'));

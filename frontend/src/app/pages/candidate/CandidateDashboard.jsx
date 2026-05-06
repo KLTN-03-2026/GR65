@@ -48,10 +48,15 @@ export function CandidateDashboard() {
         }
 
         // 3. Lấy đơn ứng tuyển của ứng viên
-        const appRes = await fetch(`${API_BASE}/api/applications/my`, { headers });
+        const appRes = await fetch(`${API_BASE}/api/applications/candidate/me`, { headers });
         if (appRes.ok) {
           const appData = await appRes.json();
-          setApplications(appData.applications || []);
+          // Endpoint trả array trực tiếp, map status → stage cho tương thích
+          const apps = (Array.isArray(appData) ? appData : appData.applications || []).map(a => ({
+            ...a,
+            stage: a.stage || a.status || 'pending',
+          }));
+          setApplications(apps);
         }
 
         // 4. Lấy danh sách CV

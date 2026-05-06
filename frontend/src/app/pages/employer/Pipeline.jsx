@@ -1,12 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Brain, Calendar, CheckCircle,
-  XCircle, ArrowRight, User, Eye
-} from
-  "lucide-react";
-import { mockPipeline } from "../../data/mockData";
+  XCircle, ArrowRight, User, Eye, Loader2
+} from "lucide-react";
 import { toast } from "sonner";
-
+import api from "../../../lib/api";
 
 const columns = [
   { key: "pending", label: "Chờ duyệt", color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200" },
@@ -15,17 +13,67 @@ const columns = [
   { key: "offer", label: "Nhận việc", color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200" },
   { key: "rejected", label: "Từ chối", color: "text-red-500", bg: "bg-red-50", border: "border-red-200" }];
 
-
 export function Pipeline() {
-  const [pipeline, setPipeline] = useState(mockPipeline);
+  const [pipeline, setPipeline] = useState({ pending: [], reviewing: [], interview: [], offer: [], rejected: [] });
+  const [loading, setLoading] = useState(true);
   const [dragging, setDragging] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
+
+  // Fetch ứng viên từ API và gom theo stage
+  const fetchPipeline = async () => {
+    try {
+      const res = await api.get('/api/applications/employer/me');
+      const apps = res.data || [];
+
+      const grouped = { pending: [], reviewing: [], interview: [], offer: [], rejected: [] };
+      apps.forEach(app => {
+        const stage = app.stage || 'pending';
+        if (grouped[stage]) {
+          grouped[stage].push({
+            id: app.applicationId,
+            candidateName: app.name,
+            avatar: app.avatar || app.name?.charAt(0) || 'U',
+            avatarColor: '#6366f1',
+            jobTitle: app.jobTitle,
+            aiScore: app.matchScore || 0,
+            type: app.type,
+            cvRead: app.cvRead,
+            interviewDate: app.interviewDate ? new Date(app.interviewDate).toLocaleDateString('vi-VN') : null
+          });
+        }
+      });
+
+      setPipeline(grouped);
+    } catch (err) {
+      console.error("Lỗi fetch pipeline:", err);
+      toast.error("Lỗi tải dữ liệu pipeline");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPipeline();
+  }, []);
+
+  // Gọi API thật khi kéo thả chuyển stage
+  const updateStage = async (appId, newStage, candidateName) => {
+    try {
+      await api.patch(`/api/applications/${appId}/stage`, { stage: newStage });
+      toast.success(`Đã chuyển ${candidateName} sang "${columns.find(c => c.key === newStage)?.label}"`);
+      return true;
+    } catch (err) {
+      toast.error("Lỗi cập nhật trạng thái");
+      console.error(err);
+      return false;
+    }
+  };
 
   const handleDragStart = (id, from) => {
     setDragging({ id, from });
   };
 
-  const handleDrop = (to) => {
+  const handleDrop = async (to) => {
     if (!dragging || dragging.from === to) {
       setDragging(null);
       setDragOverCol(null);
@@ -33,28 +81,51 @@ export function Pipeline() {
     }
     const card = pipeline[dragging.from].find((c) => c.id === dragging.id);
     if (!card) return;
+
+    // Optimistic update trước
     setPipeline((prev) => ({
       ...prev,
       [dragging.from]: prev[dragging.from].filter((c) => c.id !== dragging.id),
       [to]: [...prev[to], card]
     }));
-    toast.success(`Đã chuyển ${card.candidateName} sang "${columns.find((c) => c.key === to)?.label}"`);
     setDragging(null);
     setDragOverCol(null);
+
+    // Gọi API
+    const success = await updateStage(card.id, to, card.candidateName);
+    if (!success) {
+      // Rollback nếu thất bại
+      fetchPipeline();
+    }
   };
 
-  const moveCard = (id, from, to) => {
+  const moveCard = async (id, from, to) => {
     const card = pipeline[from].find((c) => c.id === id);
     if (!card) return;
+
+    // Optimistic update
     setPipeline((prev) => ({
       ...prev,
       [from]: prev[from].filter((c) => c.id !== id),
       [to]: [...prev[to], card]
     }));
-    toast.success(`Đã chuyển ${card.candidateName} sang "${columns.find((c) => c.key === to)?.label}"`);
+
+    const success = await updateStage(id, to, card.candidateName);
+    if (!success) {
+      fetchPipeline();
+    }
   };
 
   const totalCards = Object.values(pipeline).flat().length;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+        <span className="ml-2 text-gray-500">Đang tải pipeline...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

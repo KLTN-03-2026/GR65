@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router";
-import { Brain, Bell, Search, LogOut, Menu, X, ChevronRight, Settings } from "lucide-react";
-import { mockNotifications } from "../../data/mockData";
+import { Brain, Bell, Search, LogOut, Menu, X, ChevronRight, Settings, Loader2 } from "lucide-react";
+import api from "../../../lib/api";
 
 
 
@@ -27,12 +27,45 @@ export function DashboardLayout({ children, navItems, role, userName, userAvatar
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [notifications, setNotifications] = useState(mockNotifications);
+  const [notifications, setNotifications] = useState([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  // Fetch notifications từ API
+  const fetchNotifications = async () => {
+    try {
+      const res = await api.get('/api/notifications/me');
+      setNotifications(res.data || []);
+    } catch (err) {
+      // Nếu chưa đăng nhập hoặc lỗi, giữ rỗng
+      console.warn('Không tải được notifications:', err?.response?.status);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    // Auto refresh mỗi 30 giây
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  const markAllRead = async () => {
+    try {
+      await api.patch('/api/notifications/read-all');
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    } catch (err) {
+      console.error('Lỗi đánh dấu đã đọc:', err);
+    }
+  };
+
+  const markOneRead = async (notifId) => {
+    try {
+      await api.patch(`/api/notifications/${notifId}/read`);
+      setNotifications((prev) => prev.map((n) => n.id === notifId ? { ...n, read: true } : n));
+    } catch (err) {
+      console.error('Lỗi:', err);
+    }
   };
 
   const roleColors = {
@@ -107,7 +140,13 @@ export function DashboardLayout({ children, navItems, role, userName, userAvatar
 
         {/* Logout */}
         <div className="p-4 border-t border-gray-100">
-          <button onClick={() => navigate("/")} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-500 hover:text-red-500 hover:bg-red-50 transition-all">
+          <button onClick={() => {
+            if (window.confirm("Bạn có chắc chắn muốn đăng xuất ?")) {
+              localStorage.removeItem("token");
+              localStorage.removeItem("user");
+              navigate("/login");
+            }
+          }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-500 hover:text-red-500 hover:bg-red-50 transition-all">
             <LogOut className="w-4 h-4" />
             Đăng xuất
           </button>
@@ -157,7 +196,7 @@ export function DashboardLayout({ children, navItems, role, userName, userAvatar
                     {notifications.slice(0, 4).map((n) =>
                   <div
                     key={n.id}
-                    onClick={() => {navigate(n.link);setNotifOpen(false);setNotifications((prev) => prev.map((x) => x.id === n.id ? { ...x, read: true } : x));}}
+                    onClick={() => {navigate(n.link || '/');setNotifOpen(false);markOneRead(n.id);}}
                     className={`p-4 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors ${!n.read ? "bg-indigo-50/50" : ""}`}>
                     
                         <div className="flex items-start gap-3">

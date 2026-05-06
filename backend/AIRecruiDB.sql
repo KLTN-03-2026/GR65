@@ -214,3 +214,20 @@ CREATE TABLE Notifications (
     CreatedDate DATETIME2 DEFAULT CURRENT_TIMESTAMP
 );
 GO
+-- 12. Bảng Interviews (Lịch phỏng vấn)
+CREATE TABLE Interviews (
+    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    ApplicationId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES Applications(Id),
+    ScheduledDate DATETIME2 NOT NULL,
+    ScheduledTime NVARCHAR(10) NOT NULL,
+    InterviewType NVARCHAR(50) DEFAULT 'video', -- video, onsite, phone
+    Location NVARCHAR(500),           -- URL meeting hoặc địa chỉ
+    InterviewerName NVARCHAR(255),
+    Notes NVARCHAR(MAX),
+    Status NVARCHAR(50) DEFAULT 'pending' CHECK (Status IN ('pending','confirmed','cancelled','completed')),
+    CandidateConfirmed BIT DEFAULT 0,
+    ReminderSent BIT DEFAULT 0,
+    CreatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP
+);
+GO

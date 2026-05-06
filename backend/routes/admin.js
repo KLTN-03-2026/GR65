@@ -18,7 +18,7 @@ const isValidUUID = (id) => {
  */
 const requireAdmin = (req, res, next) => {
   try {
-    if (req.user && req.user.role === 'Admin') {
+    if (req.user && req.user.role && req.user.role.toLowerCase() === 'admin') {
       next();
     } else {
       console.warn(`Unauthorized admin access attempt by user: ${req.user?.id}, role: ${req.user?.role}`);
@@ -1870,44 +1870,18 @@ router.post('/email/user/:id', async (req, res) => {
  */
 router.get('/profile', async (req, res) => {
   try {
-    const pool = await poolPromise;
-    // Đảm bảo bảng AdminProfiles tồn tại (Tự động khởi tạo cho Admin đầu tiên)
-    await pool.request().query(`
-      IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'AdminProfiles')
-      BEGIN
-        CREATE TABLE AdminProfiles (
-          UserId UNIQUEIDENTIFIER PRIMARY KEY FOREIGN KEY REFERENCES Users(Id) ON DELETE CASCADE,
-          FullName NVARCHAR(255),
-          Phone NVARCHAR(20),
-          Department NVARCHAR(100),
-          Timezone NVARCHAR(50) DEFAULT 'SE Asia Standard Time',
-          Language NVARCHAR(10) DEFAULT 'vi',
-          AvatarUrl NVARCHAR(500)
-        );
-      END
-    `);
-
-    let result = await pool.request()
-      .input('id', sql.UniqueIdentifier, req.user.id)
-      .query(`
-        SELECT u.Email, u.Role, p.*
-        FROM Users u
-        LEFT JOIN AdminProfiles p ON u.Id = p.UserId
-        WHERE u.Id = @id
-      `);
-
-    // Nếu chưa có profile, tạo mặc định
-    if (result.recordset.length > 0 && result.recordset[0].FullName === null) {
-      await pool.request()
-        .input('id', sql.UniqueIdentifier, req.user.id)
-        .query("INSERT INTO AdminProfiles (UserId, FullName, Language) VALUES (@id, 'Hệ thống Quản trị', 'vi')");
-      
-      result = await pool.request()
-        .input('id', sql.UniqueIdentifier, req.user.id)
-        .query("SELECT u.Email, u.Role, p.* FROM Users u LEFT JOIN AdminProfiles p ON u.Id = p.UserId WHERE u.Id = @id");
-    }
-
-    res.json({ success: true, data: result.recordset[0] });
+    // Trả về dữ liệu cố định (Mock Data) theo yêu cầu
+    const profile = {
+      Email: "admin@demo.vn",
+      Role: "Admin",
+      FullName: "Hệ thống Quản trị",
+      Phone: "0123456789",
+      Department: "Ban Giám Đốc",
+      Timezone: "Asia/Ho_Chi_Minh",
+      Language: "vi",
+      AvatarUrl: null
+    };
+    res.json({ success: true, data: profile });
   } catch (err) {
     console.error('Error in GET /admin/profile:', err);
     res.status(500).json({ success: false, message: 'Lỗi khi lấy thông tin hồ sơ Admin.' });
@@ -1941,36 +1915,9 @@ router.get('/profile', async (req, res) => {
  *         description: Profile updated successfully
  */
 router.put('/profile', async (req, res) => {
-  const { fullName, email, phone, department, timezone, language, avatarUrl } = req.body;
   try {
-    const pool = await poolPromise;
-    
-    // 1. Cập nhật email trong bảng Users (nếu thay đổi)
-    if (email) {
-      await pool.request()
-        .input('id', sql.UniqueIdentifier, req.user.id)
-        .input('email', sql.NVarChar, email)
-        .query("UPDATE Users SET Email = @email, UpdatedAt = GETDATE() WHERE Id = @id");
-    }
-
-    // 2. Cập nhật thông tin chi tiết trong AdminProfiles
-    await pool.request()
-      .input('id', sql.UniqueIdentifier, req.user.id)
-      .input('name', sql.NVarChar, fullName)
-      .input('phone', sql.NVarChar, phone)
-      .input('dept', sql.NVarChar, department)
-      .input('tz', sql.NVarChar, timezone)
-      .input('lang', sql.NVarChar, language)
-      .input('avatar', sql.NVarChar, avatarUrl)
-      .query(`
-        UPDATE AdminProfiles 
-        SET FullName = @name, Phone = @phone, Department = @dept, 
-            Timezone = @tz, Language = @lang, AvatarUrl = @avatar
-        WHERE UserId = @id
-      `);
-
-    await logActivity(req.user.id, 'UPDATE_PROFILE', 'User', req.user.id, 'Admin updated their own profile');
-    res.json({ success: true, message: 'Hồ sơ đã được cập nhật thành công.' });
+    // Không cần lưu DB theo yêu cầu, chỉ trả về thành công
+    res.json({ success: true, message: 'Hồ sơ đã được cập nhật thành công (Mock).' });
   } catch (err) {
     console.error('Error in PUT /admin/profile:', err);
     res.status(500).json({ success: false, message: 'Lỗi khi cập nhật hồ sơ Admin.' });
@@ -1995,40 +1942,15 @@ router.put('/profile', async (req, res) => {
  */
 router.get('/settings', async (req, res) => {
   try {
-    const pool = await poolPromise;
-    // Khởi tạo bảng settings nếu chưa có
-    await pool.request().query(`
-      IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SystemSettings')
-      BEGIN
-        CREATE TABLE SystemSettings (
-          SettingKey NVARCHAR(100) PRIMARY KEY,
-          SettingValue NVARCHAR(MAX),
-          Description NVARCHAR(255),
-          Category NVARCHAR(50), -- AI, Security, Session
-          UpdatedAt DATETIME DEFAULT GETDATE()
-        );
-        -- Chèn các giá trị mặc định
-        INSERT INTO SystemSettings (SettingKey, SettingValue, Category, Description) VALUES 
-        ('ai_parsing_threshold', '0.6', 'AI', 'Ngưỡng tin cậy bóc tách CV'),
-        ('ai_matching_weight_skills', '0.7', 'AI', 'Trọng số kỹ năng khi so khớp'),
-        ('security_max_login_attempts', '5', 'Security', 'Số lần đăng nhập sai tối đa'),
-        ('security_password_expiry_days', '90', 'Security', 'Thời hạn mật khẩu (ngày)'),
-        ('session_timeout_minutes', '60', 'Session', 'Thời gian hết hạn phiên làm việc'),
-        ('session_allow_multiple_devices', 'false', 'Session', 'Cho phép đăng nhập trên nhiều thiết bị');
-      END
-    `);
-
-    const result = await pool.request().query("SELECT * FROM SystemSettings");
-    
-    // Chuyển đổi mảng thành object cho dễ dùng ở FE
-    const settings = {};
-    result.recordset.forEach(row => {
-      settings[row.SettingKey] = {
-        value: row.SettingValue,
-        category: row.Category,
-        description: row.Description
-      };
-    });
+    // Trả về dữ liệu cố định (Mock Data) theo yêu cầu
+    const settings = {
+      ai_parsing_threshold: { value: '0.6', category: 'AI', description: 'Ngưỡng tin cậy bóc tách CV' },
+      ai_matching_weight_skills: { value: '0.7', category: 'AI', description: 'Trọng số kỹ năng khi so khớp' },
+      security_max_login_attempts: { value: '5', category: 'Security', description: 'Số lần đăng nhập sai tối đa' },
+      security_password_expiry_days: { value: '90', category: 'Security', description: 'Thời hạn mật khẩu (ngày)' },
+      session_timeout_minutes: { value: '60', category: 'Session', description: 'Thời gian hết hạn phiên làm việc' },
+      session_allow_multiple_devices: { value: 'false', category: 'Session', description: 'Cho phép đăng nhập trên nhiều thiết bị' }
+    };
 
     res.json({ success: true, settings });
   } catch (err) {
@@ -2058,30 +1980,53 @@ router.get('/settings', async (req, res) => {
  *         description: Settings updated successfully
  */
 router.put('/settings', async (req, res) => {
-  const { settings } = req.body; // Expecting { key: value, key2: value2 }
   try {
-    const pool = await poolPromise;
-    const transaction = new sql.Transaction(pool);
-    await transaction.begin();
-    
-    try {
-      for (const [key, value] of Object.entries(settings)) {
-        await transaction.request()
-          .input('key', sql.NVarChar, key)
-          .input('val', sql.NVarChar, String(value))
-          .query("UPDATE SystemSettings SET SettingValue = @val, UpdatedAt = GETDATE() WHERE SettingKey = @key");
-      }
-      await transaction.commit();
-      
-      await logActivity(req.user.id, 'UPDATE_SYSTEM_SETTINGS', 'System', null, `Updated keys: ${Object.keys(settings).join(', ')}`);
-      res.json({ success: true, message: 'Cài đặt hệ thống đã được cập nhật.' });
-    } catch (err) {
-      await transaction.rollback();
-      throw err;
-    }
+    // Không cần lưu DB, chỉ trả về thành công
+    res.json({ success: true, message: 'Cài đặt hệ thống đã được cập nhật (Mock).' });
   } catch (err) {
     console.error('Error in PUT /admin/settings:', err);
     res.status(500).json({ success: false, message: 'Lỗi khi cập nhật cài đặt hệ thống.' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/admin/email/user/{id}:
+ *   post:
+ *     summary: Send email to a user
+ *     tags: [Admin - Users]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.post('/email/user/:id', async (req, res) => {
+  const { id } = req.params;
+  const { subject, content, isHtml } = req.body;
+  try {
+    const pool = await poolPromise;
+    const userResult = await pool.request()
+      .input('id', sql.UniqueIdentifier, id)
+      .query("SELECT Email FROM Users WHERE Id = @id");
+    
+    if (userResult.recordset.length === 0) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng.' });
+    }
+    
+    const userEmail = userResult.recordset[0].Email;
+    
+    const textContent = isHtml ? 'Vui lòng xem email này bằng trình đọc hỗ trợ HTML.' : content;
+    const htmlContent = isHtml ? content : null;
+    
+    const emailResult = await sendEmail(userEmail, subject, textContent, htmlContent);
+    
+    if (emailResult.success) {
+      await logActivity(req.user.id, 'ADMIN_SEND_EMAIL', 'User', id, `Sent email to ${userEmail} with subject: ${subject}`);
+      res.json({ success: true, message: 'Email đã được gửi thành công.' });
+    } else {
+      res.status(500).json({ success: false, message: 'Không thể gửi email do lỗi cấu hình SMTP.', error: emailResult.error });
+    }
+  } catch (err) {
+    console.error('Error in POST /admin/email/user/:id:', err);
+    res.status(500).json({ success: false, message: 'Lỗi khi lấy thông tin và gửi email.' });
   }
 });
 

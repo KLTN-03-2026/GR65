@@ -56,6 +56,20 @@ router.get('/me', async (req, res) => {
         isProfileComplete: !!(c?.Title && c?.SkillsJson),
       };
 
+      // Lấy AI Score cao nhất từ các CV đã phân tích
+      const aiScoreRes = await pool.request()
+        .input('CandidateId', sql.UniqueIdentifier, id)
+        .query(`
+          SELECT MAX(CAST(AIScore AS FLOAT)) as bestAIScore,
+                 COUNT(*) as totalCVs,
+                 SUM(CASE WHEN AIParsed = 1 THEN 1 ELSE 0 END) as parsedCVs
+          FROM CVs WHERE CandidateId = @CandidateId AND AIScore > 0
+        `);
+      const aiData = aiScoreRes.recordset[0];
+      profile.aiScore = aiData?.bestAIScore ? Math.round(aiData.bestAIScore * 100) / 100 : 0;
+      profile.totalCVs = aiData?.totalCVs || 0;
+      profile.parsedCVs = aiData?.parsedCVs || 0;
+
     } else if (role === 'Employer') {
       // Lấy toàn bộ thông tin nhà tuyển dụng
       const pRes = await pool.request()

@@ -284,8 +284,13 @@ router.post('/login', async (req, res) => {
       const pResult = await pool.request().input('UserId', sql.UniqueIdentifier, user.Id).query('SELECT CompanyName, LogoUrl, Industry, Location FROM Employers WHERE UserId = @UserId');
       profile = pResult.recordset[0];
     } else if (user.Role === 'Admin') {
-      const pResult = await pool.request().input('UserId', sql.UniqueIdentifier, user.Id).query('SELECT FullName, Department FROM AdminProfiles WHERE UserId = @UserId');
-      profile = pResult.recordset[0] || { FullName: 'System Admin' };
+      try {
+        const pResult = await pool.request().input('UserId', sql.UniqueIdentifier, user.Id).query('SELECT FullName, Department FROM AdminProfiles WHERE UserId = @UserId');
+        profile = pResult.recordset[0] || { FullName: 'System Admin' };
+      } catch (err) {
+        // Fallback nếu bảng AdminProfiles chưa được tạo
+        profile = { FullName: 'System Admin' };
+      }
     }
 
     const payload = { user: { id: user.Id, role: user.Role } };
@@ -319,16 +324,28 @@ router.post('/forgot-password', async (req, res) => {
     if (!email) return res.status(400).json({ message: 'Vui lòng nhập email.' });
 
     const pool = await poolPromise;
+
+    // Kiểm tra cột AuthProvider có tồn tại không
+    const colCheck = await pool.request().query(`
+      SELECT 1 FROM sys.columns 
+      WHERE object_id = OBJECT_ID('Users') AND name = 'AuthProvider'
+    `);
+    const hasAuthProvider = colCheck.recordset.length > 0;
+
+    const selectQuery = hasAuthProvider
+      ? 'SELECT Id, AuthProvider FROM Users WHERE Email = @Email'
+      : 'SELECT Id FROM Users WHERE Email = @Email';
+
     const result = await pool.request()
       .input('Email', sql.NVarChar, email)
-      .query('SELECT Id, AuthProvider FROM Users WHERE Email = @Email');
+      .query(selectQuery);
 
     if (result.recordset.length === 0) {
       return res.status(404).json({ message: 'Email không tồn tại trong hệ thống.' });
     }
 
     const user = result.recordset[0];
-    if (user.AuthProvider === 'google') {
+    if (hasAuthProvider && user.AuthProvider === 'google') {
       return res.status(400).json({ message: 'Tài khoản này đăng nhập bằng Google. Vui lòng đăng nhập bằng Google.' });
     }
 
@@ -336,6 +353,12 @@ router.post('/forgot-password', async (req, res) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 5 * 60 * 1000; // 5 phút
     otpStore.set(email, { otp, expiresAt, verified: false });
+
+    // Kiểm tra cấu hình SMTP
+    if (!process.env.SMTP_EMAIL || !process.env.SMTP_PASSWORD) {
+      console.error('Forgot password error: SMTP_EMAIL hoặc SMTP_PASSWORD chưa được cấu hình trong .env');
+      return res.status(500).json({ message: 'Hệ thống chưa cấu hình email. Vui lòng liên hệ quản trị viên.' });
+    }
 
     // Send email
     const transporter = nodemailer.createTransport({
@@ -360,7 +383,13 @@ router.post('/forgot-password', async (req, res) => {
 
     res.json({ message: 'Mã OTP đã được gửi đến email của bạn.' });
   } catch (err) {
-    console.error('Forgot password error:', err);
+    console.error('Forgot password error:', err.message || err);
+    if (err.code === 'EAUTH') {
+      return res.status(500).json({ message: 'Lỗi xác thực email. Vui lòng kiểm tra lại cấu hình SMTP.' });
+    }
+    if (err.code === 'ESOCKET' || err.code === 'ECONNECTION') {
+      return res.status(500).json({ message: 'Không thể kết nối đến máy chủ email. Vui lòng thử lại sau.' });
+    }
     res.status(500).json({ message: 'Lỗi hệ thống khi gửi OTP.' });
   }
 });
