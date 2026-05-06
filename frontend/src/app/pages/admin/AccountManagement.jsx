@@ -101,9 +101,9 @@ export function AccountManagement() {
   };
 
   // Group users by role for "all" tab
-  const candidates = users.filter(u => u.Role === "Candidate");
-  const employers = users.filter(u => u.Role === "Employer");
-  const admins = users.filter(u => u.Role === "Admin");
+  const candidates = users.filter(u => u.Role?.toLowerCase() === "candidate");
+  const employers = users.filter(u => u.Role?.toLowerCase() === "employer");
+  const admins = users.filter(u => u.Role?.toLowerCase() === "admin");
 
   const tabs = [
   { key: "all", label: "Tất cả", count: pagination.total },
