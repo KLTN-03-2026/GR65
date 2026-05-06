@@ -378,7 +378,7 @@ Hệ thống tự tạo tài khoản Admin khi khởi chạy lần đầu:
 
 ### Sơ đồ ERD
 
-```
+```text
 ┌─────────┐       ┌────────────┐       ┌──────────┐
 │  Users  │──1:1──│ Candidates │──1:N──│   CVs    │
 │         │       │            │       └──────────┘
@@ -387,24 +387,22 @@ Hệ thống tự tạo tài khoản Admin khi khởi chạy lần đầu:
 │         │                            └──────┬───────┘
 │         │       ┌────────────┐              │
 │         │──1:1──│ Employers  │──1:N──┌──────┴──┐
-│         │       └────────────┘       │  Jobs   │
-│         │                            └─────────┘
-│         │──1:N──┌───────────────┐
-└─────────┘       │ Notifications │
-                  └───────────────┘
+└─────────┘       └────────────┘       │  Jobs   │
+                                       └─────────┘
 ```
 
-### Các bảng chính
+### Các bảng chính (Nhóm Cốt lõi)
 
 | Bảng | Mô tả |
 |---|---|
 | `Users` | Tài khoản (Admin / Candidate / Employer) |
 | `Candidates` | Thông tin ứng viên (kỹ năng, kinh nghiệm, AI Score) |
 | `Employers` | Thông tin nhà tuyển dụng (công ty, ngành nghề) |
-| `Jobs` | Tin tuyển dụng (yêu cầu, mức lương, kỹ năng) |
-| `CVs` | Hồ sơ CV (file, AI Score, JSON trích xuất) |
+| `Jobs` | Tin tuyển dụng (yêu cầu, mức lương, kỹ năng, trạng thái duyệt) |
+| `CVs` | Hồ sơ CV (file, trạng thái duyệt, AI Score, JSON trích xuất) |
 | `Applications` | Đơn ứng tuyển & Pipeline (pending → reviewing → interview → offer) |
-| `Notifications` | Thông báo hệ thống |
+
+> **Lưu ý:** Ngoài các bảng cốt lõi trên, hệ thống còn sử dụng các bảng phụ chạy ngầm (`ActivityLog`, `AIPerformanceLogs`) để ghi nhận lịch sử thao tác và đo lường hiệu năng của AI, phục vụ riêng cho trang Thống kê của Quản trị viên.
 
 ---
 
