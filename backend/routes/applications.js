@@ -376,13 +376,14 @@ router.post('/:id/contact', async (req, res) => {
       .input('appId', sql.UniqueIdentifier, appId)
       .input('employerId', sql.UniqueIdentifier, employerId)
       .query(`
-        SELECT a.Id, u.Email AS CandidateEmail, u.Name AS CandidateName,
+        SELECT a.Id, u.Email AS CandidateEmail, c.FullName AS CandidateName,
                j.Title AS JobTitle,
-               e.Name AS EmployerName, eu.Email AS EmployerEmail
+               emp.CompanyName AS EmployerName, eu.Email AS EmployerEmail
         FROM Applications a
         JOIN Users u ON a.CandidateId = u.Id
+        JOIN Candidates c ON a.CandidateId = c.UserId
         JOIN Jobs j ON a.JobId = j.Id
-        JOIN Users e ON j.EmployerId = e.Id
+        JOIN Employers emp ON j.EmployerId = emp.UserId
         JOIN Users eu ON j.EmployerId = eu.Id
         WHERE a.Id = @appId AND j.EmployerId = @employerId
       `);

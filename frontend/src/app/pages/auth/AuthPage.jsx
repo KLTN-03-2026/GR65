@@ -81,17 +81,28 @@ export function AuthPage() {
     }
   }, [role, navigate]);
 
-  // Khởi tạo và render nút Google mỗi khi mode/role thay đổi
+  // Cập nhật callback toàn cục để luôn lấy được role mới nhất mà không cần khởi tạo lại Google
+  useEffect(() => {
+    window.handleGoogleCallbackGlobal = handleGoogleCallback;
+  }, [handleGoogleCallback]);
+
+  // Khởi tạo và render nút Google
   useEffect(() => {
     if (mode === "forgot") return;
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
     if (!clientId || !window.google) return;
 
-    const googleClient = window.google.accounts.id;
-    googleClient.initialize({
-      client_id: clientId,
-      callback: handleGoogleCallback,
-    });
+    if (!window.isGoogleInitialized) {
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: (response) => {
+          if (window.handleGoogleCallbackGlobal) {
+            window.handleGoogleCallbackGlobal(response);
+          }
+        },
+      });
+      window.isGoogleInitialized = true;
+    }
 
     // Render nút Google vào container
     if (googleBtnRef.current) {
@@ -105,7 +116,7 @@ export function AuthPage() {
         locale: "vi_VN",
       });
     }
-  }, [mode, role, handleGoogleCallback]);
+  }, [mode, role]);
 
   // API_URL imported at top of file
 
