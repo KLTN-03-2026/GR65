@@ -9,31 +9,32 @@ const nodemailer = require('nodemailer');
  */
 const sendEmail = async (to, subject, text, html) => {
   try {
-    // Create transporter using environment variables or fallback to a mock/test account
-    // For production, use a real SMTP service like Gmail, SendGrid, Mailtrap, etc.
+    // Kiểm tra cấu hình SMTP trước khi gửi
+    if (!process.env.SMTP_EMAIL || !process.env.SMTP_PASSWORD) {
+      console.error('sendEmail: SMTP_EMAIL hoặc SMTP_PASSWORD chưa được cấu hình trong .env');
+      return { success: false, error: 'SMTP chưa được cấu hình.' };
+    }
+
     const transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-      port: process.env.EMAIL_PORT || 587,
-      secure: process.env.EMAIL_SECURE === 'true', // true for 465, false for other ports
+      service: 'gmail',
       auth: {
-        user: process.env.EMAIL_USER, // Your email
-        pass: process.env.EMAIL_PASS, // Your email password or app password
+        user: process.env.SMTP_EMAIL,
+        pass: process.env.SMTP_PASSWORD,
       },
     });
 
     const info = await transporter.sendMail({
-      from: `"AI Recruitment System" <${process.env.EMAIL_USER || 'noreply@airecruit.com'}>`,
+      from: `"AI Recruitment System" <${process.env.SMTP_EMAIL}>`,
       to,
       subject,
       text,
       html: html || text,
     });
 
-    console.log('Message sent: %s', info.messageId);
+    console.log('✅ Email sent to %s — messageId: %s', to, info.messageId);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('Error sending email:', error);
-    // If not configured, we log it and return false instead of crashing
+    console.error('❌ Error sending email to', to, ':', error.message);
     return { success: false, error: error.message };
   }
 };
