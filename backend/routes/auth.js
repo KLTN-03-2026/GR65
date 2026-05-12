@@ -548,7 +548,7 @@ router.post('/google', async (req, res) => {
     res.json({
       message: 'Đăng nhập Google thành công',
       token,
-      user: { id: user.Id, email: user.Email, role: user.Role, profile }
+      user: { id: user.Id, email: user.Email, role: user.Role, authProvider: 'google', profile }
     });
 
   } catch (err) {

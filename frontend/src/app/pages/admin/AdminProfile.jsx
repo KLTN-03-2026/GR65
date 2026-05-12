@@ -303,6 +303,14 @@ export function AdminProfile() {
               {/* TAB: Security */}
               {activeTab === "security" &&
               <div className="space-y-6">
+                  {JSON.parse(localStorage.getItem('user') || '{}')?.authProvider === 'google' ? (
+                    <div className="bg-red-50 border border-red-100 rounded-xl p-6 text-center">
+                      <Shield className="w-10 h-10 text-red-400 mx-auto mb-3" />
+                      <p className="text-sm text-red-700" style={{ fontWeight: 600 }}>Tài khoản đăng nhập bằng Google</p>
+                      <p className="text-xs text-red-500 mt-1">Mật khẩu được quản lý bởi Google. Bạn không cần đổi mật khẩu tại đây.</p>
+                    </div>
+                  ) : (
+                  <>
                   <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-start gap-3">
                     <Shield className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
                     <p className="text-xs text-red-700">Tài khoản Admin có quyền quản trị cao nhất. Bảo mật tài khoản là ưu tiên số một.</p>
@@ -335,6 +343,8 @@ export function AdminProfile() {
                       {saving ? "Đang cập nhật..." : "Đổi mật khẩu"}
                     </button>
                   </div>
+                  </>
+                  )}
                 </div>
               }
 

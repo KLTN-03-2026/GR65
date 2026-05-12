@@ -783,6 +783,14 @@ export function CandidateProfile() {
               {/* ── TAB: Security ── */}
               {activeTab === "security" &&
               <div className="space-y-6">
+                  {JSON.parse(localStorage.getItem('user') || '{}')?.authProvider === 'google' ? (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-6 text-center">
+                      <Shield className="w-10 h-10 text-blue-400 mx-auto mb-3" />
+                      <p className="text-sm text-blue-700" style={{ fontWeight: 600 }}>Tài khoản đăng nhập bằng Google</p>
+                      <p className="text-xs text-blue-500 mt-1">Mật khẩu được quản lý bởi Google. Bạn không cần đổi mật khẩu tại đây.</p>
+                    </div>
+                  ) : (
+                  <>
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-start gap-3">
                     <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
                     <p className="text-xs text-blue-700">Mật khẩu phải ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường và số.</p>
@@ -867,6 +875,8 @@ export function CandidateProfile() {
                       {saving ? "Đang cập nhật..." : "Đổi mật khẩu"}
                     </button>
                   </div>
+                  </>
+                  )}
 
                   <div className="border-t border-gray-100 pt-6">
                     <h3 className="text-sm text-red-600 mb-3" style={{ fontWeight: 600 }}>Vùng nguy hiểm</h3>

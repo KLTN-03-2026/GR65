@@ -521,6 +521,14 @@ export function EmployerProfile() {
               {/* ── TAB: Security ── */}
               {activeTab === "security" &&
               <div className="space-y-6">
+                  {JSON.parse(localStorage.getItem('user') || '{}')?.authProvider === 'google' ? (
+                    <div className="bg-amber-50 border border-amber-100 rounded-xl p-6 text-center">
+                      <Shield className="w-10 h-10 text-amber-400 mx-auto mb-3" />
+                      <p className="text-sm text-amber-700" style={{ fontWeight: 600 }}>Tài khoản đăng nhập bằng Google</p>
+                      <p className="text-xs text-amber-500 mt-1">Mật khẩu được quản lý bởi Google. Bạn không cần đổi mật khẩu tại đây.</p>
+                    </div>
+                  ) : (
+                  <>
                   <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex items-start gap-3">
                     <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
                     <p className="text-xs text-amber-700">Tài khoản nhà tuyển dụng chứa thông tin nhạy cảm. Hãy sử dụng mật khẩu mạnh và bảo mật.</p>
@@ -564,6 +572,8 @@ export function EmployerProfile() {
                       {saving ? "Đang cập nhật..." : "Đổi mật khẩu"}
                     </button>
                   </div>
+                  </>
+                  )}
                 </div>
               }
             </div>

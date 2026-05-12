@@ -291,18 +291,24 @@ router.delete('/:id', async (req, res) => {
 
     if (cvRes.recordset.length === 0) return res.status(404).json({ message: 'Không tìm thấy CV.' });
 
-    // Kiểm tra CV có đang được sử dụng trong Pipeline (Applications đang active)
-    const activeApps = await pool.request()
-      .input('CvId', sql.UniqueIdentifier, cvId)
-      .query(`
-        SELECT COUNT(*) AS cnt FROM Applications 
-        WHERE CvId = @CvId AND Status NOT IN ('rejected', 'withdrawn')
-      `);
+    // Chỉ chặn xóa nếu: đây là CV cuối cùng VÀ ứng viên đang có hồ sơ ứng tuyển active
+    const cvCount = await pool.request()
+      .input('CandidateId', sql.UniqueIdentifier, userId)
+      .query('SELECT COUNT(*) AS cnt FROM CVs WHERE CandidateId = @CandidateId');
 
-    if (activeApps.recordset[0].cnt > 0) {
-      return res.status(400).json({ 
-        message: 'Không thể xóa CV đang trong quy trình ứng tuyển' 
-      });
+    if (cvCount.recordset[0].cnt <= 1) {
+      const activeApps = await pool.request()
+        .input('CandidateId', sql.UniqueIdentifier, userId)
+        .query(`
+          SELECT COUNT(*) AS cnt FROM Applications 
+          WHERE CandidateId = @CandidateId AND Status NOT IN ('rejected', 'withdrawn')
+        `);
+
+      if (activeApps.recordset[0].cnt > 0) {
+        return res.status(400).json({ 
+          message: 'Không thể xóa CV đang trong quy trình ứng tuyển' 
+        });
+      }
     }
 
     const fileUrl = cvRes.recordset[0].FileUrl;
