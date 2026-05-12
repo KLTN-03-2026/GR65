@@ -1,4 +1,4 @@
-const { sql, poolPromise } = require('../db');
+const { pool } = require('../db');
 
 /**
  * Ghi lại nhật ký hoạt động vào cơ sở dữ liệu
@@ -10,17 +10,11 @@ const { sql, poolPromise } = require('../db');
  */
 const logActivity = async (userId, action, entityType, entityId = null, details = null) => {
   try {
-    const pool = await poolPromise;
-    await pool.request()
-      .input('UserId', sql.UniqueIdentifier, userId)
-      .input('Action', sql.NVarChar, action)
-      .input('EntityType', sql.NVarChar, entityType)
-      .input('EntityId', sql.UniqueIdentifier, entityId)
-      .input('Details', sql.NVarChar, details)
-      .query(`
-        INSERT INTO ActivityLog (Id, UserId, Action, EntityType, EntityId, Details, CreatedAt)
-        VALUES (NEWID(), @UserId, @Action, @EntityType, @EntityId, @Details, GETDATE())
-      `);
+    await pool.query(
+      `INSERT INTO ActivityLog (Id, UserId, Action, EntityType, EntityId, Details, CreatedAt)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`,
+      [userId, action, entityType, entityId, details]
+    );
   } catch (err) {
     console.error('Error logging activity:', err.message);
     // Không ném lỗi ra ngoài để tránh làm gián đoạn luồng chính của API

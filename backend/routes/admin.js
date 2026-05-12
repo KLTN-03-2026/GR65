@@ -67,33 +67,36 @@ router.get('/global-search', async (req, res) => {
     const usersSearch = pool.request()
       .input('q', sql.NVarChar, searchTerm)
       .query(`
-        SELECT TOP 5 u.Id, u.Email, u.Role, 
-               ISNULL(c.FullName, e.CompanyName) as DisplayName,
-               ISNULL(c.AvatarUrl, e.LogoUrl) as Avatar
+        SELECT u.Id, u.Email, u.Role, 
+               COALESCE(c.FullName, e.CompanyName) as DisplayName,
+               COALESCE(c.AvatarUrl, e.LogoUrl) as Avatar
         FROM Users u
         LEFT JOIN Candidates c ON u.Id = c.UserId
         LEFT JOIN Employers e ON u.Id = e.UserId
         WHERE u.Email LIKE @q OR c.FullName LIKE @q OR e.CompanyName LIKE @q
+        LIMIT 5
       `);
 
     // Search Jobs
     const jobsSearch = pool.request()
       .input('q', sql.NVarChar, searchTerm)
       .query(`
-        SELECT TOP 5 j.Id, j.Title, j.Status, e.CompanyName, j.Category
+        SELECT j.Id, j.Title, j.Status, e.CompanyName, j.Category
         FROM Jobs j
         JOIN Employers e ON j.EmployerId = e.UserId
         WHERE j.Title LIKE @q OR j.Category LIKE @q OR e.CompanyName LIKE @q
+        LIMIT 5
       `);
 
     // Search CVs
     const cvsSearch = pool.request()
       .input('q', sql.NVarChar, searchTerm)
       .query(`
-        SELECT TOP 5 cv.Id, cv.FileName, cv.Status, c.FullName as CandidateName, cv.UploadedDate
+        SELECT cv.Id, cv.FileName, cv.Status, c.FullName as CandidateName, cv.UploadedDate
         FROM CVs cv
         JOIN Candidates c ON cv.CandidateId = c.UserId
         WHERE cv.FileName LIKE @q OR c.FullName LIKE @q
+        LIMIT 5
       `);
 
     const [users, jobs, cvs] = await Promise.all([usersSearch, jobsSearch, cvsSearch]);
@@ -139,13 +142,11 @@ router.get('/dashboard', async (req, res) => {
         (SELECT COUNT(*) FROM Jobs WHERE Status = 'active') as activeJobs,
         (SELECT COUNT(*) FROM Applications) as totalApplications,
         (SELECT COUNT(*) FROM Applications WHERE Stage = 'offer') as successfulHires,
-        (SELECT COUNT(*) FROM CVs WHERE AIParsed = 1) as aiProcessed,
+        (SELECT COUNT(*) FROM CVs WHERE AIParsed = true) as aiProcessed,
         (SELECT COUNT(*) FROM Users WHERE Role = 'Employer') as totalEmployers,
-        -- Tính trung bình điểm AI thật
-        (SELECT AVG(CAST(AIScore AS FLOAT)) FROM CVs WHERE AIScore IS NOT NULL) as avgAccuracy,
-        -- Đếm số bản ghi tháng này để tính tăng trưởng
-        (SELECT COUNT(*) FROM Users WHERE Month(CreatedAt) = Month(GETDATE()) AND Year(CreatedAt) = Year(GETDATE())) as usersThisMonth,
-        (SELECT COUNT(*) FROM Users WHERE Month(CreatedAt) = Month(DATEADD(month, -1, GETDATE())) AND Year(CreatedAt) = Year(DATEADD(month, -1, GETDATE()))) as usersLastMonth
+        (SELECT AVG(CAST(AIScore AS DOUBLE PRECISION)) FROM CVs WHERE AIScore IS NOT NULL) as avgAccuracy,
+        (SELECT COUNT(*) FROM Users WHERE EXTRACT(MONTH FROM CreatedAt) = EXTRACT(MONTH FROM NOW()) AND EXTRACT(YEAR FROM CreatedAt) = EXTRACT(YEAR FROM NOW())) as usersThisMonth,
+        (SELECT COUNT(*) FROM Users WHERE EXTRACT(MONTH FROM CreatedAt) = EXTRACT(MONTH FROM NOW() - INTERVAL '1 month') AND EXTRACT(YEAR FROM CreatedAt) = EXTRACT(YEAR FROM NOW() - INTERVAL '1 month')) as usersLastMonth
     `;
     
     const result = await pool.request().query(statsQuery);
@@ -197,9 +198,9 @@ router.get('/stats/growth', async (req, res) => {
   try {
     const pool = await poolPromise;
     const growthQuery = `
-      SELECT FORMAT(CreatedAt, 'yyyy-MM') as Month, COUNT(*) as Count
-      FROM Users WHERE CreatedAt >= DATEADD(month, -6, GETDATE())
-      GROUP BY FORMAT(CreatedAt, 'yyyy-MM') ORDER BY Month ASC
+      SELECT TO_CHAR(CreatedAt, 'YYYY-MM') as Month, COUNT(*) as Count
+      FROM Users WHERE CreatedAt >= NOW() - INTERVAL '6 months'
+      GROUP BY TO_CHAR(CreatedAt, 'YYYY-MM') ORDER BY Month ASC
     `;
     const result = await pool.request().query(growthQuery);
     res.json({ success: true, data: result.recordset });
@@ -226,9 +227,9 @@ router.get('/stats/jobs', async (req, res) => {
     const pool = await poolPromise;
     const statusStats = await pool.request().query(`SELECT Status, COUNT(*) as Count FROM Jobs GROUP BY Status`);
     const timeStats = await pool.request().query(`
-      SELECT FORMAT(CreatedAt, 'yyyy-MM') as Month, COUNT(*) as Count
-      FROM Jobs WHERE CreatedAt >= DATEADD(month, -6, GETDATE())
-      GROUP BY FORMAT(CreatedAt, 'yyyy-MM') ORDER BY Month ASC
+      SELECT TO_CHAR(CreatedAt, 'YYYY-MM') as Month, COUNT(*) as Count
+      FROM Jobs WHERE CreatedAt >= NOW() - INTERVAL '6 months'
+      GROUP BY TO_CHAR(CreatedAt, 'YYYY-MM') ORDER BY Month ASC
     `);
     const categoryStats = await pool.request().query(`SELECT Category, COUNT(*) as Count FROM Jobs GROUP BY Category`);
     res.json({ success: true, data: { byStatus: statusStats.recordset, byTime: timeStats.recordset, byCategory: categoryStats.recordset } });
@@ -289,22 +290,21 @@ router.get('/ai-stats', async (req, res) => {
     const statsResult = await pool.request().query(`
       SELECT 
         COUNT(*) as totalCVs,
-        SUM(CASE WHEN AIParsed = 1 THEN 1 ELSE 0 END) as parsedCVs,
-        AVG(CAST(AIScore AS FLOAT)) as avgCVScore,
-        (SELECT AVG(CAST(AIMatchScore AS FLOAT)) FROM Applications WHERE AIMatchScore IS NOT NULL) as avgMatchScore,
+        SUM(CASE WHEN AIParsed = true THEN 1 ELSE 0 END) as parsedCVs,
+        AVG(CAST(AIScore AS DOUBLE PRECISION)) as avgCVScore,
+        (SELECT AVG(CAST(AIMatchScore AS DOUBLE PRECISION)) FROM Applications WHERE AIMatchScore IS NOT NULL) as avgMatchScore,
         (SELECT COUNT(*) FROM Applications WHERE AIMatchScore IS NOT NULL) as totalMatches
       FROM CVs
     `);
     const stats = statsResult.recordset[0];
 
-    // 2. Xu hướng hiệu suất AI theo tháng (Dữ liệu thật từ UploadedDate)
     const trendsResult = await pool.request().query(`
       SELECT 
-        FORMAT(UploadedDate, 'yyyy-MM') as Month,
-        AVG(CAST(AIScore AS FLOAT)) as Accuracy
+        TO_CHAR(UploadedDate, 'YYYY-MM') as Month,
+        AVG(CAST(AIScore AS DOUBLE PRECISION)) as Accuracy
       FROM CVs
-      WHERE UploadedDate >= DATEADD(month, -6, GETDATE())
-      GROUP BY FORMAT(UploadedDate, 'yyyy-MM')
+      WHERE UploadedDate >= NOW() - INTERVAL '6 months'
+      GROUP BY TO_CHAR(UploadedDate, 'YYYY-MM')
       ORDER BY Month ASC
     `);
 
@@ -367,17 +367,12 @@ router.get('/stats/spam', async (req, res) => {
     const pool = await poolPromise;
     const spamStats = await pool.request().query(`
       SELECT
-        -- Người dùng ảo/rác (Bị khóa hoặc chưa hoàn thiện hồ sơ)
         (SELECT COUNT(*) FROM Candidates WHERE Status = 'suspended' OR (Title IS NULL AND SkillsJson IS NULL)) as fakeCandidates,
         (SELECT COUNT(*) FROM Employers WHERE Status = 'suspended' OR (Industry IS NULL AND Description IS NULL)) as fakeEmployers,
-        
-        -- CV ảo/rác (Bị từ chối, AI không bóc tách được, hoặc điểm quá thấp)
         (SELECT COUNT(*) FROM CVs WHERE Status = 'rejected') as rejectedCVs,
-        (SELECT COUNT(*) FROM CVs WHERE AIParsed = 0) as aiFailedCVs,
+        (SELECT COUNT(*) FROM CVs WHERE AIParsed = false) as aiFailedCVs,
         (SELECT COUNT(*) FROM CVs WHERE AIScore < 10) as lowQualityCVs,
-        
-        -- Tổng hợp
-        (SELECT COUNT(*) FROM Users WHERE Email LIKE '%test%' OR Email LIKE '%example%' OR Email LIKE '%abc%') as testAccounts
+        (SELECT COUNT(*) FROM Users WHERE Email ILIKE '%test%' OR Email ILIKE '%example%' OR Email ILIKE '%abc%') as testAccounts
     `);
 
     const data = spamStats.recordset[0];
@@ -422,15 +417,10 @@ router.get('/stats/ai-performance', async (req, res) => {
     const pool = await poolPromise;
     const result = await pool.request().query(`
       SELECT
-        -- Tổng lượt call (CV Parsing + Job Matching)
-        (SELECT COUNT(*) FROM CVs WHERE AIParsed = 1) as cvRequests,
+        (SELECT COUNT(*) FROM CVs WHERE AIParsed = true) as cvRequests,
         (SELECT COUNT(*) FROM Applications WHERE AIMatchScore IS NOT NULL) as matchingRequests,
-        
-        -- Điểm matching trung bình
-        (SELECT AVG(CAST(AIMatchScore AS FLOAT)) FROM Applications WHERE AIMatchScore IS NOT NULL) as avgMatchScore,
-        (SELECT AVG(CAST(AIScore AS FLOAT)) FROM CVs WHERE AIScore IS NOT NULL) as avgCVScore,
-        
-        -- Thống kê Feedback loops (số lần Admin yêu cầu AI bóc tách lại hoặc cập nhật thuật toán)
+        (SELECT AVG(CAST(AIMatchScore AS DOUBLE PRECISION)) FROM Applications WHERE AIMatchScore IS NOT NULL) as avgMatchScore,
+        (SELECT AVG(CAST(AIScore AS DOUBLE PRECISION)) FROM CVs WHERE AIScore IS NOT NULL) as avgCVScore,
         (SELECT COUNT(*) FROM ActivityLog WHERE Action IN ('REPARSE_CV', 'UPDATE_AI_MODEL', 'FORCE_MATCH')) as feedbackLoops
     `);
 
@@ -523,11 +513,11 @@ router.get('/users', async (req, res) => {
 
     const query = `
       SELECT u.Id, u.Email, u.Role, u.CreatedAt, u.AuthProvider,
-        CASE WHEN u.Role = 'Candidate' THEN ISNULL(c.FullName, u.Email)
-             WHEN u.Role = 'Employer' THEN ISNULL(e.CompanyName, u.Email)
+        CASE WHEN u.Role = 'Candidate' THEN COALESCE(c.FullName, u.Email)
+             WHEN u.Role = 'Employer' THEN COALESCE(e.CompanyName, u.Email)
              ELSE u.Email END as DisplayName,
-        CASE WHEN u.Role = 'Candidate' THEN ISNULL(c.Status, 'active')
-             WHEN u.Role = 'Employer' THEN ISNULL(e.Status, 'active')
+        CASE WHEN u.Role = 'Candidate' THEN COALESCE(c.Status, 'active')
+             WHEN u.Role = 'Employer' THEN COALESCE(e.Status, 'active')
              ELSE 'active' END as Status,
         CASE WHEN u.Role = 'Candidate' THEN c.AvatarUrl
              WHEN u.Role = 'Employer' THEN e.LogoUrl
@@ -537,7 +527,7 @@ router.get('/users', async (req, res) => {
       LEFT JOIN Employers e ON u.Id = e.UserId
       ${whereClause}
       ORDER BY u.CreatedAt DESC
-      OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
+      LIMIT ${limit} OFFSET ${offset}
     `;
     
     const result = await request.query(query);
@@ -586,7 +576,7 @@ router.post('/users', async (req, res) => {
     await pool.request()
       .input('Id', sql.UniqueIdentifier, userId).input('Email', sql.NVarChar, email)
       .input('PasswordHash', sql.NVarChar, hashedPassword).input('Role', sql.NVarChar, role)
-      .query("INSERT INTO Users (Id, Email, PasswordHash, Role, CreatedAt, UpdatedAt) VALUES (@Id, @Email, @PasswordHash, @Role, GETDATE(), GETDATE())");
+      .query("INSERT INTO Users (Id, Email, PasswordHash, Role, CreatedAt, UpdatedAt) VALUES (@Id, @Email, @PasswordHash, @Role, NOW(), NOW())");
 
     if (role === 'Candidate') {
       await pool.request().input('Id', sql.UniqueIdentifier, userId).input('Name', sql.NVarChar, fullName || 'New Candidate').query("INSERT INTO Candidates (UserId, FullName, Status) VALUES (@Id, @Name, 'active')");
@@ -749,7 +739,7 @@ router.get('/search/users', async (req, res) => {
   try {
     const pool = await poolPromise;
     const result = await pool.request().input('q', sql.NVarChar, `%${q}%`).query(`
-      SELECT u.Id, u.Email, u.Role, ISNULL(c.FullName, e.CompanyName) as DisplayName 
+      SELECT u.Id, u.Email, u.Role, COALESCE(c.FullName, e.CompanyName) as DisplayName 
       FROM Users u LEFT JOIN Candidates c ON u.Id = c.UserId LEFT JOIN Employers e ON u.Id = e.UserId 
       WHERE u.Email LIKE @q OR c.FullName LIKE @q OR e.CompanyName LIKE @q
     `);
@@ -855,7 +845,7 @@ router.get('/jobs', async (req, res) => {
       FROM Jobs j JOIN Employers e ON j.EmployerId = e.UserId
       ${whereClause}
       ORDER BY j.CreatedAt DESC
-      OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
+      LIMIT ${limit} OFFSET ${offset}
     `);
     
     res.json({ success: true, data: result.recordset, pagination: { total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / limit) } });
@@ -907,7 +897,7 @@ router.post('/jobs', async (req, res) => {
       .input('Benefits', sql.NVarChar, JSON.stringify(benefits || []))
       .query(`
         INSERT INTO Jobs (Id, EmployerId, Title, Location, JobType, SalaryRange, ExperienceReq, Description, Category, Requirements, Benefits, Status, CreatedAt)
-        VALUES (@Id, @EmployerId, @Title, @Location, @JobType, @SalaryRange, @ExperienceReq, @Description, @Category, @Requirements, @Benefits, 'active', GETDATE())
+        VALUES (@Id, @EmployerId, @Title, @Location, @JobType, @SalaryRange, @ExperienceReq, @Description, @Category, @Requirements, @Benefits, 'active', NOW())
       `);
     
     await logActivity(req.user.id, 'ADMIN_CREATE_JOB', 'Job', jobId, `Admin created job: ${title}`);
@@ -989,7 +979,7 @@ router.put('/jobs/:id', async (req, res) => {
       .query(`
         UPDATE Jobs SET Title = @Title, Location = @Location, JobType = @JobType, SalaryRange = @SalaryRange,
         ExperienceReq = @ExperienceReq, Description = @Description, Category = @Category,
-        Status = @Status, Requirements = @Requirements, Benefits = @Benefits, UpdatedAt = GETDATE()
+        Status = @Status, Requirements = @Requirements, Benefits = @Benefits, UpdatedAt = NOW()
         WHERE Id = @Id
       `);
       
@@ -1165,7 +1155,7 @@ router.get('/cvs', async (req, res) => {
       FROM CVs cv JOIN Candidates c ON cv.CandidateId = c.UserId
       ${whereClause}
       ORDER BY cv.UploadedDate DESC
-      OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
+      LIMIT ${limit} OFFSET ${offset}
     `);
     
     res.json({ success: true, data: result.recordset, pagination: { total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / limit) } });
@@ -1241,11 +1231,10 @@ router.get('/stats/top-skills', async (req, res) => {
     // 1. Cố gắng lấy kỹ năng thật bằng OPENJSON
     // (Chỉ hoạt động trên SQL Server 2016+ và định dạng JSON hợp lệ)
     const result = await pool.request().query(`
-      SELECT Skill, COUNT(*) as DemandCount
-      FROM Jobs
-      CROSS APPLY OPENJSON(SkillsReqJson) WITH (Skill NVARCHAR(100) '$')
+      SELECT skill_value as Skill, COUNT(*) as DemandCount
+      FROM Jobs, jsonb_array_elements_text(SkillsReqJson::jsonb) AS skill_value
       WHERE Status = 'active'
-      GROUP BY Skill
+      GROUP BY skill_value
       ORDER BY DemandCount DESC
     `);
 
@@ -1564,7 +1553,7 @@ router.post('/roles/:roleId/permissions', async (req, res) => {
           .query("INSERT INTO RolePermissions (RoleId, PermissionId) VALUES (@rId, @pId)");
       }
       await transaction.request().input('aId', sql.UniqueIdentifier, req.user.id).input('rId', sql.UniqueIdentifier, roleId)
-        .query("INSERT INTO RoleChangeLog (AdminId, Action, RoleId, CreatedAt) VALUES (@aId, 'UPDATE_MATRIX', @rId, GETDATE())");
+        .query("INSERT INTO RoleChangeLog (AdminId, Action, RoleId, CreatedAt) VALUES (@aId, 'UPDATE_MATRIX', @rId, NOW())");
       await transaction.commit();
       res.json({ success: true, message: 'Cập nhật ma trận quyền thành công.' });
     } catch (err) { await transaction.rollback(); throw err; }
@@ -1649,10 +1638,10 @@ router.get('/activities', async (req, res) => {
   try {
     const pool = await poolPromise;
     const result = await pool.request().query(`
-      SELECT TOP 100 a.*, u.Email, ISNULL(c.FullName, e.CompanyName) as UserName
+      SELECT a.*, u.Email, COALESCE(c.FullName, e.CompanyName) as UserName
       FROM ActivityLog a LEFT JOIN Users u ON a.UserId = u.Id
       LEFT JOIN Candidates c ON u.Id = c.UserId LEFT JOIN Employers e ON u.Id = e.UserId
-      ORDER BY a.CreatedAt DESC
+      ORDER BY a.CreatedAt DESC LIMIT 100
     `);
     res.json({ success: true, data: result.recordset });
   } catch (err) { 
@@ -1676,7 +1665,7 @@ router.get('/activities', async (req, res) => {
 router.get('/notifications', async (req, res) => {
   try {
     const pool = await poolPromise;
-    const result = await pool.request().query("SELECT TOP 50 n.*, u.Email as UserEmail FROM Notifications n LEFT JOIN Users u ON n.UserId = u.Id WHERE n.Type IN ('System', 'Admin Direct') ORDER BY n.CreatedDate DESC");
+    const result = await pool.request().query("SELECT n.*, u.Email as UserEmail FROM Notifications n LEFT JOIN Users u ON n.UserId = u.Id WHERE n.Type IN ('System', 'Admin Direct') ORDER BY n.CreatedDate DESC LIMIT 50");
     res.json({ success: true, data: result.recordset });
   } catch (err) {
     console.error('Error in GET /admin/notifications:', err);
@@ -1712,7 +1701,7 @@ router.post('/notifications/broadcast', async (req, res) => {
     const users = await pool.request().query("SELECT Id FROM Users");
     for (const user of users.recordset) {
       await pool.request().input('uId', sql.UniqueIdentifier, user.Id).input('t', sql.NVarChar, title).input('m', sql.NVarChar, message)
-        .query("INSERT INTO Notifications (Id, UserId, Title, Message, IsRead, CreatedDate) VALUES (NEWID(), @uId, @t, @m, 0, GETDATE())");
+        .query("INSERT INTO Notifications (Id, UserId, Title, Message, IsRead, CreatedDate) VALUES (gen_random_uuid(), @uId, @t, @m, 0, NOW())");
     }
     await logActivity(req.user.id, 'BROADCAST_NOTIF', 'System', null, `Title: ${title}`);
     res.json({ success: true, message: 'Đã gửi thông báo toàn hệ thống.' });
@@ -1755,7 +1744,7 @@ router.post('/notifications/user/:id', async (req, res) => {
   if (!title || !message) return res.status(400).json({ success: false, message: 'Thiếu tiêu đề hoặc nội dung thông báo.' });
   try {
     const pool = await poolPromise;
-    await pool.request().input('UserId', sql.UniqueIdentifier, id).input('Type', sql.NVarChar, type || 'Admin Direct').input('Title', sql.NVarChar, title).input('Message', sql.NVarChar, message).query("INSERT INTO Notifications (Id, UserId, Type, Title, Message, IsRead, CreatedDate) VALUES (NEWID(), @UserId, @Type, @Title, @Message, 0, GETDATE())");
+    await pool.request().input('UserId', sql.UniqueIdentifier, id).input('Type', sql.NVarChar, type || 'Admin Direct').input('Title', sql.NVarChar, title).input('Message', sql.NVarChar, message).query("INSERT INTO Notifications (Id, UserId, Type, Title, Message, IsRead, CreatedDate) VALUES (gen_random_uuid(), @UserId, @Type, @Title, @Message, 0, NOW())");
     
     await logActivity(req.user.id, 'SEND_NOTIF', 'User', id, `Sent direct notification: ${title}`);
     res.json({ success: true, message: 'Đã gửi thông báo tới người dùng thành công.' });

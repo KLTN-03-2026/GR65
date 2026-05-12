@@ -1,233 +1,209 @@
 -- =============================================
 -- CƠ SỞ DỮ LIỆU HỆ THỐNG TUYỂN DỤNG THÔNG MINH (AI RECRUIT)
--- Cập nhật mới nhất: Tích hợp AI, Bảo mật và RBAC
+-- PostgreSQL Version
 -- =============================================
 
-IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'AIRecruitDB')
-BEGIN
-    CREATE DATABASE AIRecruitDB;
-END
-GO
-
-USE AIRecruitDB;
-GO
+-- Bật extension UUID
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 1. Bảng Users (Tài khoản lõi)
-CREATE TABLE Users (
-    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    Email NVARCHAR(255) NOT NULL UNIQUE,
-    PasswordHash NVARCHAR(255) NOT NULL,
-    Role NVARCHAR(50) NOT NULL CHECK (Role IN ('Admin', 'Candidate', 'Employer')),
+CREATE TABLE IF NOT EXISTS Users (
+    Id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    Email VARCHAR(255) NOT NULL UNIQUE,
+    PasswordHash VARCHAR(255) NOT NULL,
+    Role VARCHAR(50) NOT NULL CHECK (Role IN ('Admin', 'Candidate', 'Employer')),
     LoginAttempts INT DEFAULT 0,
-    LockoutUntil DATETIME NULL,
-    AuthProvider NVARCHAR(50) DEFAULT 'local', -- local, google
-    GoogleId NVARCHAR(255) NULL,
-    CreatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP,
-    UpdatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP
+    LockoutUntil TIMESTAMPTZ NULL,
+    AuthProvider VARCHAR(50) DEFAULT 'local',
+    GoogleId VARCHAR(255) NULL,
+    CreatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-GO
 
 -- 2. Bảng AdminProfiles (Thông tin chi tiết Admin)
-CREATE TABLE AdminProfiles (
-    UserId UNIQUEIDENTIFIER PRIMARY KEY FOREIGN KEY REFERENCES Users(Id) ON DELETE CASCADE,
-    FullName NVARCHAR(255),
-    Phone NVARCHAR(20),
-    Department NVARCHAR(100),
-    Timezone NVARCHAR(50) DEFAULT 'SE Asia Standard Time',
-    Language NVARCHAR(10) DEFAULT 'vi',
-    AvatarUrl NVARCHAR(500)
+CREATE TABLE IF NOT EXISTS AdminProfiles (
+    UserId UUID PRIMARY KEY REFERENCES Users(Id) ON DELETE CASCADE,
+    FullName VARCHAR(255),
+    Phone VARCHAR(20),
+    Department VARCHAR(100),
+    Timezone VARCHAR(50) DEFAULT 'SE Asia Standard Time',
+    Language VARCHAR(10) DEFAULT 'vi',
+    AvatarUrl VARCHAR(500)
 );
-GO
 
 -- 3. Bảng Candidates (Ứng viên)
-CREATE TABLE Candidates (
-    UserId UNIQUEIDENTIFIER PRIMARY KEY FOREIGN KEY REFERENCES Users(Id) ON DELETE CASCADE,
-    FullName NVARCHAR(255) NOT NULL,
-    Phone NVARCHAR(20),
-    AvatarUrl NVARCHAR(500),
-    Title NVARCHAR(255),
-    Location NVARCHAR(255),
-    ExperienceYears NVARCHAR(50),
-    Education NVARCHAR(500),
-    SkillsJson NVARCHAR(MAX), 
-    AIScore DECIMAL(5,2) DEFAULT 0,
-    ExpectedSalary NVARCHAR(255),
-    Availability NVARCHAR(255),
-    Status NVARCHAR(50) DEFAULT 'active' CHECK (Status IN ('active', 'suspended', 'pending')),
-    CreatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP,
-    UpdatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS Candidates (
+    UserId UUID PRIMARY KEY REFERENCES Users(Id) ON DELETE CASCADE,
+    FullName VARCHAR(255) NOT NULL,
+    Phone VARCHAR(20),
+    AvatarUrl VARCHAR(500),
+    Title VARCHAR(255),
+    Location VARCHAR(255),
+    ExperienceYears VARCHAR(50),
+    Education VARCHAR(500),
+    SkillsJson TEXT,
+    AIScore NUMERIC(5,2) DEFAULT 0,
+    ExpectedSalary VARCHAR(255),
+    Availability VARCHAR(255),
+    Status VARCHAR(50) DEFAULT 'active' CHECK (Status IN ('active', 'suspended', 'pending')),
+    CreatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-GO
 
 -- 4. Bảng Employers (Nhà tuyển dụng)
-CREATE TABLE Employers (
-    UserId UNIQUEIDENTIFIER PRIMARY KEY FOREIGN KEY REFERENCES Users(Id) ON DELETE CASCADE,
-    CompanyName NVARCHAR(255) NOT NULL,
-    LogoUrl NVARCHAR(500),
-    Industry NVARCHAR(100),
-    Size NVARCHAR(100),
-    Location NVARCHAR(255),
-    Website NVARCHAR(255),
-    Description NVARCHAR(MAX),
-    Phone NVARCHAR(20),
-    ContactName NVARCHAR(255),
-    Status NVARCHAR(50) DEFAULT 'active' CHECK (Status IN ('active', 'suspended', 'pending')),
+CREATE TABLE IF NOT EXISTS Employers (
+    UserId UUID PRIMARY KEY REFERENCES Users(Id) ON DELETE CASCADE,
+    CompanyName VARCHAR(255) NOT NULL,
+    LogoUrl VARCHAR(500),
+    Industry VARCHAR(100),
+    Size VARCHAR(100),
+    Location VARCHAR(255),
+    Website VARCHAR(255),
+    Description TEXT,
+    Phone VARCHAR(20),
+    ContactName VARCHAR(255),
+    Status VARCHAR(50) DEFAULT 'active' CHECK (Status IN ('active', 'suspended', 'pending')),
     Credits INT DEFAULT 0,
-    CreatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP,
-    UpdatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP
+    CreatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-GO
 
 -- 5. Bảng Jobs (Tin tuyển dụng)
-CREATE TABLE Jobs (
-    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    EmployerId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES Employers(UserId),
-    Title NVARCHAR(255) NOT NULL,
-    Location NVARCHAR(255),
-    JobType NVARCHAR(50) DEFAULT 'Full-time',
-    SalaryRange NVARCHAR(100),
-    ExperienceReq NVARCHAR(100),
-    SkillsReqJson NVARCHAR(MAX), -- Lưu mảng JSON kỹ năng
-    Description NVARCHAR(MAX),
-    Requirements NVARCHAR(MAX), 
-    Benefits NVARCHAR(MAX),
-    Category NVARCHAR(100),
-    IsFeatured BIT DEFAULT 0,
-    Status NVARCHAR(50) DEFAULT 'active' CHECK (Status IN ('active', 'closed', 'draft', 'pending', 'rejected')),
-    PostedDate DATETIME2 DEFAULT CURRENT_TIMESTAMP,
-    Deadline DATETIME2,
-    CreatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP,
-    UpdatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS Jobs (
+    Id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    EmployerId UUID NOT NULL REFERENCES Employers(UserId),
+    Title VARCHAR(255) NOT NULL,
+    Location VARCHAR(255),
+    JobType VARCHAR(50) DEFAULT 'Full-time',
+    SalaryRange VARCHAR(100),
+    ExperienceReq VARCHAR(100),
+    SkillsReqJson TEXT,
+    Description TEXT,
+    Requirements TEXT,
+    Benefits TEXT,
+    Category VARCHAR(100),
+    IsFeatured BOOLEAN DEFAULT FALSE,
+    Status VARCHAR(50) DEFAULT 'active' CHECK (Status IN ('active', 'closed', 'draft', 'pending', 'rejected')),
+    PostedDate TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    Deadline TIMESTAMPTZ,
+    CreatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-GO
 
 -- 6. Bảng CVs (Hồ sơ ứng viên)
-CREATE TABLE CVs (
-    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    CandidateId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES Candidates(UserId) ON DELETE CASCADE,
-    FileName NVARCHAR(255) NOT NULL,
-    FileUrl NVARCHAR(500) NOT NULL,
-    FileSize NVARCHAR(50),
-    Format NVARCHAR(20),
-    IsDefault BIT DEFAULT 0,
-    AIParsed BIT DEFAULT 0,
-    AIScore DECIMAL(5,2) DEFAULT 0,
-    AIExtractedJson NVARCHAR(MAX),
-    Status NVARCHAR(50) DEFAULT 'approved' CHECK (Status IN ('pending', 'approved', 'rejected')),
-    UploadedDate DATETIME2 DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS CVs (
+    Id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    CandidateId UUID NOT NULL REFERENCES Candidates(UserId) ON DELETE CASCADE,
+    FileName VARCHAR(255) NOT NULL,
+    FileUrl VARCHAR(500) NOT NULL,
+    FileSize VARCHAR(50),
+    Format VARCHAR(20),
+    IsDefault BOOLEAN DEFAULT FALSE,
+    AIParsed BOOLEAN DEFAULT FALSE,
+    AIScore NUMERIC(5,2) DEFAULT 0,
+    AIExtractedJson TEXT,
+    Status VARCHAR(50) DEFAULT 'approved' CHECK (Status IN ('pending', 'approved', 'rejected')),
+    UploadedDate TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-GO
 
 -- 7. Bảng Applications (Đơn ứng tuyển)
-CREATE TABLE Applications (
-    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    JobId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES Jobs(Id),
-    CandidateId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES Candidates(UserId),
-    Stage NVARCHAR(50) DEFAULT 'pending' CHECK (Stage IN ('pending', 'reviewing', 'interview', 'offer', 'rejected')),
-    ApplicationType NVARCHAR(50) DEFAULT 'applied', -- applied, ai_suggested, v.v.
-    AIMatchScore DECIMAL(5,2),
-    CvRead BIT DEFAULT 0,
-    InterviewDate DATETIME2,
-    AppliedDate DATETIME2 DEFAULT CURRENT_TIMESTAMP,
-    UpdatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS Applications (
+    Id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    JobId UUID NOT NULL REFERENCES Jobs(Id),
+    CandidateId UUID NOT NULL REFERENCES Candidates(UserId),
+    Stage VARCHAR(50) DEFAULT 'pending' CHECK (Stage IN ('pending', 'reviewing', 'interview', 'offer', 'rejected')),
+    ApplicationType VARCHAR(50) DEFAULT 'applied',
+    AIMatchScore NUMERIC(5,2),
+    CvRead BOOLEAN DEFAULT FALSE,
+    InterviewDate TIMESTAMPTZ,
+    AppliedDate TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-GO
 
 -- 8. Bảng SystemSettings (Cài đặt hệ thống)
-CREATE TABLE SystemSettings (
-    SettingKey NVARCHAR(100) PRIMARY KEY,
-    SettingValue NVARCHAR(MAX),
-    Description NVARCHAR(255),
-    Category NVARCHAR(50), -- AI, Security, Session
-    UpdatedAt DATETIME DEFAULT GETDATE()
+CREATE TABLE IF NOT EXISTS SystemSettings (
+    SettingKey VARCHAR(100) PRIMARY KEY,
+    SettingValue TEXT,
+    Description VARCHAR(255),
+    Category VARCHAR(50),
+    UpdatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-GO
 
--- Chèn cài đặt mặc định
-INSERT INTO SystemSettings (SettingKey, SettingValue, Category, Description) VALUES 
+-- Chèn cài đặt mặc định (bỏ qua nếu đã tồn tại)
+INSERT INTO SystemSettings (SettingKey, SettingValue, Category, Description) VALUES
 ('ai_parsing_threshold', '0.6', 'AI', 'Ngưỡng tin cậy bóc tách CV'),
 ('ai_matching_weight_skills', '0.7', 'AI', 'Trọng số kỹ năng khi so khớp'),
 ('security_max_login_attempts', '5', 'Security', 'Số lần đăng nhập sai tối đa'),
-('session_timeout_minutes', '1440', 'Session', 'Thời gian hết hạn phiên (phút)');
-GO
+('session_timeout_minutes', '1440', 'Session', 'Thời gian hết hạn phiên (phút)')
+ON CONFLICT (SettingKey) DO NOTHING;
 
 -- 9. Bảng Roles & Permissions (Phân quyền nâng cao)
-CREATE TABLE Roles (
-    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    Name NVARCHAR(50) NOT NULL UNIQUE,
-    Description NVARCHAR(255),
-    CreatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS Roles (
+    Id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    Name VARCHAR(50) NOT NULL UNIQUE,
+    Description VARCHAR(255),
+    IsSystem BOOLEAN DEFAULT FALSE,
+    CreatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE Permissions (
-    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    Name NVARCHAR(100) NOT NULL,
-    Code NVARCHAR(50) NOT NULL UNIQUE, -- VD: 'MANAGE_USERS'
-    Module NVARCHAR(50),
-    Description NVARCHAR(255)
+CREATE TABLE IF NOT EXISTS Permissions (
+    Id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    Name VARCHAR(100) NOT NULL,
+    Code VARCHAR(50) NOT NULL UNIQUE,
+    Module VARCHAR(50),
+    Description VARCHAR(255)
 );
 
-CREATE TABLE RolePermissions (
-    RoleId UNIQUEIDENTIFIER FOREIGN KEY REFERENCES Roles(Id) ON DELETE CASCADE,
-    PermissionId UNIQUEIDENTIFIER FOREIGN KEY REFERENCES Permissions(Id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS RolePermissions (
+    RoleId UUID REFERENCES Roles(Id) ON DELETE CASCADE,
+    PermissionId UUID REFERENCES Permissions(Id) ON DELETE CASCADE,
     PRIMARY KEY (RoleId, PermissionId)
 );
 
-CREATE TABLE RoleChangeLog (
-    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    AdminId UNIQUEIDENTIFIER FOREIGN KEY REFERENCES Users(Id),
-    Action NVARCHAR(100),
-    RoleId UNIQUEIDENTIFIER,
-    Details NVARCHAR(MAX),
-    CreatedAt DATETIME2 DEFAULT GETDATE()
+CREATE TABLE IF NOT EXISTS RoleChangeLog (
+    Id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    AdminId UUID REFERENCES Users(Id),
+    Action VARCHAR(100),
+    RoleId UUID,
+    Details TEXT,
+    CreatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-GO
 
 -- 10. Nhật ký hoạt động & Hiệu năng AI
-CREATE TABLE ActivityLog (
-    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    UserId UNIQUEIDENTIFIER FOREIGN KEY REFERENCES Users(Id) ON DELETE SET NULL,
-    Action NVARCHAR(100) NOT NULL,
-    EntityType NVARCHAR(50),
-    EntityId UNIQUEIDENTIFIER,
-    Details NVARCHAR(MAX),
-    CreatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS ActivityLog (
+    Id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    UserId UUID REFERENCES Users(Id) ON DELETE SET NULL,
+    Action VARCHAR(100) NOT NULL,
+    EntityType VARCHAR(50),
+    EntityId UUID,
+    Details TEXT,
+    CreatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE TABLE AIPerformanceLogs (
-    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    Operation NVARCHAR(100), -- CV_PARSING, JOB_MATCHING
-    LatencyMs INT,
-    Status NVARCHAR(50),
-    CreatedAt DATETIME DEFAULT GETDATE()
-);
-GO
 
 -- 11. Bảng Notifications
-CREATE TABLE Notifications (
-    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    UserId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES Users(Id) ON DELETE CASCADE,
-    Type NVARCHAR(50),
-    Title NVARCHAR(255),
-    Message NVARCHAR(MAX),
-    IsRead BIT DEFAULT 0,
-    CreatedDate DATETIME2 DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS Notifications (
+    Id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    UserId UUID NOT NULL REFERENCES Users(Id) ON DELETE CASCADE,
+    Type VARCHAR(50),
+    Title VARCHAR(255),
+    Message TEXT,
+    IsRead BOOLEAN DEFAULT FALSE,
+    CreatedDate TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-GO
+
 -- 12. Bảng Interviews (Lịch phỏng vấn)
-CREATE TABLE Interviews (
-    Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    ApplicationId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES Applications(Id),
-    ScheduledDate DATETIME2 NOT NULL,
-    ScheduledTime NVARCHAR(10) NOT NULL,
-    InterviewType NVARCHAR(50) DEFAULT 'video', -- video, onsite, phone
-    Location NVARCHAR(500),           -- URL meeting hoặc địa chỉ
-    InterviewerName NVARCHAR(255),
-    Notes NVARCHAR(MAX),
-    Status NVARCHAR(50) DEFAULT 'pending' CHECK (Status IN ('pending','confirmed','cancelled','completed')),
-    CandidateConfirmed BIT DEFAULT 0,
-    ReminderSent BIT DEFAULT 0,
-    CreatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP,
-    UpdatedAt DATETIME2 DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS Interviews (
+    Id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ApplicationId UUID NOT NULL REFERENCES Applications(Id),
+    ScheduledDate TIMESTAMPTZ NOT NULL,
+    ScheduledTime VARCHAR(10) NOT NULL,
+    InterviewType VARCHAR(50) DEFAULT 'video',
+    Location VARCHAR(500),
+    InterviewerName VARCHAR(255),
+    Notes TEXT,
+    Status VARCHAR(50) DEFAULT 'pending' CHECK (Status IN ('pending','confirmed','cancelled','completed')),
+    CandidateConfirmed BOOLEAN DEFAULT FALSE,
+    ReminderSent BOOLEAN DEFAULT FALSE,
+    CreatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-GO

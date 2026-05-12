@@ -1,81 +1,68 @@
-const { sql, poolPromise } = require('./db');
+const { pool } = require('./db');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 
 async function initializeDatabase() {
   try {
-    const pool = await poolPromise;
-    console.log('Connected to SQL Server. Synchronizing database schema...');
+    console.log('Connected to PostgreSQL. Synchronizing database schema...');
 
-    // Read SQL file
+    // Read and execute SQL file
     const sqlFilePath = path.join(__dirname, 'AIRecruiDB.sql');
     if (fs.existsSync(sqlFilePath)) {
       const sqlScript = fs.readFileSync(sqlFilePath, 'utf8');
-      
-      // Split by GO keyword
-      const statements = sqlScript.split(/\bGO\b/i);
-
-      for (let statement of statements) {
-        statement = statement.trim();
-        if (!statement) continue;
-
-        // Skip CREATE DATABASE and USE statements if they might fail 
-        // because we are already connected to the database
-        if (statement.toUpperCase().startsWith('CREATE DATABASE') || 
-            statement.toUpperCase().startsWith('USE ')) {
-          continue;
-        }
-
-        try {
-          await pool.request().query(statement);
-        } catch (err) {
-          // Ignore "already exists" errors
-          if (err.message.includes('already an object named') || 
-              err.message.includes('already has a primary key') ||
-              err.message.includes('Column names in each table must be unique') ||
-              err.message.includes('already exists on table')) {
-            // This is expected if the script is run multiple times
-            continue;
-          }
-          console.warn('Warning executing SQL statement:', err.message);
+      try {
+        await pool.query(sqlScript);
+      } catch (err) {
+        // Log warning but continue — tables likely already exist
+        if (!err.message.includes('already exists')) {
+          console.warn('Warning executing SQL schema:', err.message);
         }
       }
       console.log('Database schema synchronization completed.');
     }
 
     // Đảm bảo cột GoogleId và AuthProvider tồn tại (cho Google SSO)
-    // Đảm bảo cột Status tồn tại trong bảng CVs và Jobs cho kiểm duyệt
     const alterQueries = [
-      `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Users') AND name = 'AuthProvider')
-       ALTER TABLE Users ADD AuthProvider NVARCHAR(50) DEFAULT 'local'`,
-      `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Users') AND name = 'GoogleId')
-       ALTER TABLE Users ADD GoogleId NVARCHAR(255) NULL`,
-      `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('CVs') AND name = 'Status')
-       ALTER TABLE CVs ADD Status NVARCHAR(50) DEFAULT 'approved' CHECK (Status IN ('pending', 'approved', 'rejected'))`,
-      `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Jobs') AND name = 'Status')
-       ALTER TABLE Jobs ADD Status NVARCHAR(50) DEFAULT 'active' CHECK (Status IN ('active', 'closed', 'draft', 'pending', 'rejected'))`
+      `DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='authprovider') THEN
+          ALTER TABLE Users ADD COLUMN AuthProvider VARCHAR(50) DEFAULT 'local';
+        END IF;
+      END $$`,
+      `DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='googleid') THEN
+          ALTER TABLE Users ADD COLUMN GoogleId VARCHAR(255) NULL;
+        END IF;
+      END $$`,
+      `DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cvs' AND column_name='status') THEN
+          ALTER TABLE CVs ADD COLUMN Status VARCHAR(50) DEFAULT 'approved';
+        END IF;
+      END $$`,
+      `DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='jobs' AND column_name='status') THEN
+          ALTER TABLE Jobs ADD COLUMN Status VARCHAR(50) DEFAULT 'active';
+        END IF;
+      END $$`
     ];
     for (const q of alterQueries) {
-      try { await pool.request().query(q); } catch (e) { console.warn('Alter query warning:', e.message); }
+      try { await pool.query(q); } catch (e) { console.warn('Alter query warning:', e.message); }
     }
     console.log('Database columns ensured.');
 
     // Seed Roles
     const roles = [
-      { name: 'Admin', desc: 'System Administrator', isSystem: 1 },
-      { name: 'Candidate', desc: 'Job Seeker', isSystem: 1 },
-      { name: 'Employer', desc: 'Recruiter', isSystem: 1 }
+      { name: 'Admin', desc: 'System Administrator', isSystem: true },
+      { name: 'Candidate', desc: 'Job Seeker', isSystem: true },
+      { name: 'Employer', desc: 'Recruiter', isSystem: true }
     ];
     for (const r of roles) {
-      await pool.request()
-        .input('Name', sql.NVarChar, r.name)
-        .input('Desc', sql.NVarChar, r.desc)
-        .input('IsSystem', sql.Bit, r.isSystem)
-        .query(`
-          IF NOT EXISTS (SELECT 1 FROM Roles WHERE Name = @Name)
-          INSERT INTO Roles (Id, Name, Description, IsSystem) VALUES (NEWID(), @Name, @Desc, @IsSystem)
-        `);
+      await pool.query(
+        `INSERT INTO Roles (Id, Name, Description, IsSystem)
+         SELECT gen_random_uuid(), $1, $2, $3
+         WHERE NOT EXISTS (SELECT 1 FROM Roles WHERE Name = $1)`,
+        [r.name, r.desc, r.isSystem]
+      );
     }
 
     // Seed Permissions
@@ -87,36 +74,29 @@ async function initializeDatabase() {
       { code: 'MODERATE_CONTENT', name: 'Kiểm duyệt nội dung', mod: 'Moderation' }
     ];
     for (const p of permissions) {
-      await pool.request()
-        .input('Code', sql.NVarChar, p.code)
-        .input('Name', sql.NVarChar, p.name)
-        .input('Mod', sql.NVarChar, p.mod)
-        .query(`
-          IF NOT EXISTS (SELECT 1 FROM Permissions WHERE Code = @Code)
-          INSERT INTO Permissions (Id, Code, Name, Module) VALUES (NEWID(), @Code, @Name, @Mod)
-        `);
+      await pool.query(
+        `INSERT INTO Permissions (Id, Code, Name, Module)
+         SELECT gen_random_uuid(), $1, $2, $3
+         WHERE NOT EXISTS (SELECT 1 FROM Permissions WHERE Code = $1)`,
+        [p.code, p.name, p.mod]
+      );
     }
     
     console.log('Seed roles and permissions completed.');
 
     // Seed Admin user
     const adminEmail = 'admin@demo.vn';
-    const result = await pool.request()
-      .input('Email', sql.NVarChar, adminEmail)
-      .query('SELECT TOP 1 * FROM Users WHERE Email = @Email');
+    const result = await pool.query('SELECT * FROM Users WHERE Email = $1 LIMIT 1', [adminEmail]);
 
-    if (result.recordset.length === 0) {
+    if (result.rows.length === 0) {
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash('Admin@123', salt);
 
-      await pool.request()
-        .input('Email', sql.NVarChar, adminEmail)
-        .input('PasswordHash', sql.NVarChar, hashedPassword)
-        .input('Role', sql.NVarChar, 'Admin')
-        .query(`
-          INSERT INTO Users (Id, Email, PasswordHash, Role, CreatedAt, UpdatedAt)
-          VALUES (NEWID(), @Email, @PasswordHash, @Role, GETDATE(), GETDATE())
-        `);
+      await pool.query(
+        `INSERT INTO Users (Id, Email, PasswordHash, Role, CreatedAt, UpdatedAt)
+         VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())`,
+        [adminEmail, hashedPassword, 'Admin']
+      );
       console.log('Seed Admin user created.');
     } else {
       console.log('Admin user already exists.');
