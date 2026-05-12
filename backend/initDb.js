@@ -59,8 +59,8 @@ async function initializeDatabase() {
     for (const r of roles) {
       await pool.query(
         `INSERT INTO Roles (Id, Name, Description, IsSystem)
-         SELECT gen_random_uuid(), $1, $2, $3
-         WHERE NOT EXISTS (SELECT 1 FROM Roles WHERE Name = $1)`,
+         SELECT gen_random_uuid(), $1::VARCHAR, $2::VARCHAR, $3::BOOLEAN
+         WHERE NOT EXISTS (SELECT 1 FROM Roles WHERE Name = $1::VARCHAR)`,
         [r.name, r.desc, r.isSystem]
       );
     }
@@ -76,8 +76,8 @@ async function initializeDatabase() {
     for (const p of permissions) {
       await pool.query(
         `INSERT INTO Permissions (Id, Code, Name, Module)
-         SELECT gen_random_uuid(), $1, $2, $3
-         WHERE NOT EXISTS (SELECT 1 FROM Permissions WHERE Code = $1)`,
+         SELECT gen_random_uuid(), $1::VARCHAR, $2::VARCHAR, $3::VARCHAR
+         WHERE NOT EXISTS (SELECT 1 FROM Permissions WHERE Code = $1::VARCHAR)`,
         [p.code, p.name, p.mod]
       );
     }

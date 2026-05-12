@@ -34,15 +34,16 @@ router.get('/employer/me', async (req, res) => {
     if (unScored.length > 0) {
       const groupedByJob = {};
       for (const app of unScored) { if (!groupedByJob[app.jobId]) groupedByJob[app.jobId] = { jdText: app._jdText, apps: [] }; groupedByJob[app.jobId].apps.push(app); }
-      const http = require('http');
       for (const jobId in groupedByJob) {
         const group = groupedByJob[jobId];
         const cvIdsToScore = [], fallbackCvs = [];
         for (const x of group.apps) { if (x.cvId) cvIdsToScore.push(x.cvId); else fallbackCvs.push({ id: x.applicationId, text: `${x.title||''} ${x.experience||''} ${(x.skills||[]).join(', ')}` }); }
         const postData = JSON.stringify({ jd_text: group.jdText, cv_ids: cvIdsToScore, fallback_cvs: fallbackCvs });
         try {
+          const aiUrl = new URL(process.env.AI_SERVICE_URL || 'http://127.0.0.1:8000');
+          const httpModule = aiUrl.protocol === 'https:' ? require('https') : require('http');
           const aiData = await new Promise((resolve, reject) => {
-            const req = http.request({ hostname: '127.0.0.1', port: 8000, path: '/api/ai/match-jd', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) } }, (res) => { let raw = ''; res.on('data', c => raw += c); res.on('end', () => { try { resolve(JSON.parse(raw)); } catch (e) { resolve({}); } }); });
+            const req = httpModule.request({ hostname: aiUrl.hostname, port: aiUrl.port || (aiUrl.protocol === 'https:' ? 443 : 80), path: '/api/ai/match-jd', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) } }, (res) => { let raw = ''; res.on('data', c => raw += c); res.on('end', () => { try { resolve(JSON.parse(raw)); } catch (e) { resolve({}); } }); });
             req.on('error', e => reject(e)); req.write(postData); req.end();
           });
           if (aiData.success && aiData.scores) {
@@ -88,9 +89,10 @@ router.get('/job/:jobId', async (req, res) => {
         const cvIdsToScore = [], fallbackCvs = [];
         for (const x of unScored) { if (x.cvId) cvIdsToScore.push(x.cvId); else fallbackCvs.push({ id: x.applicationId, text: `${x.title||''} ${x.experience||''} ${(x.skills||[]).join(', ')}` }); }
         const postData = JSON.stringify({ jd_text: jdText, cv_ids: cvIdsToScore, fallback_cvs: fallbackCvs });
-        const http = require('http');
+        const aiUrl = new URL(process.env.AI_SERVICE_URL || 'http://127.0.0.1:8000');
+        const httpModule = aiUrl.protocol === 'https:' ? require('https') : require('http');
         const aiData = await new Promise((resolve, reject) => {
-          const req = http.request({ hostname: '127.0.0.1', port: 8000, path: '/api/ai/match-jd', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) } }, (res) => { let raw = ''; res.on('data', c => raw += c); res.on('end', () => { try { resolve(JSON.parse(raw)); } catch (e) { resolve({}); } }); });
+          const req = httpModule.request({ hostname: aiUrl.hostname, port: aiUrl.port || (aiUrl.protocol === 'https:' ? 443 : 80), path: '/api/ai/match-jd', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) } }, (res) => { let raw = ''; res.on('data', c => raw += c); res.on('end', () => { try { resolve(JSON.parse(raw)); } catch (e) { resolve({}); } }); });
           req.on('error', e => reject(e)); req.write(postData); req.end();
         });
         if (aiData.success && aiData.scores) {
