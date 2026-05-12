@@ -14,10 +14,15 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: (req, file, cb) => { const allowed = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png']; const ext = path.extname(file.originalname).toLowerCase(); if (allowed.includes(ext)) cb(null, true); else cb(new Error('Định dạng file không được hỗ trợ.')); } });
 
-async function parseWithAI(filePath, format, cvId) {
+async function parseWithAI(filePath, format, cvId, fileUrl) {
   try {
     const aiUrl = process.env.AI_SERVICE_URL || 'http://127.0.0.1:8000';
-    const response = await fetch(`${aiUrl}/api/ai/parse-cv`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cv_id: cvId, file_path: filePath, format }) });
+    // On cloud: send the public URL so AI Service can download the file
+    // Locally: send the local file path
+    const backendUrl = process.env.BACKEND_URL || process.env.RENDER_EXTERNAL_URL || '';
+    const actualPath = backendUrl ? `${backendUrl}${fileUrl}` : filePath;
+    console.log(`📤 Sending to AI: ${actualPath}`);
+    const response = await fetch(`${aiUrl}/api/ai/parse-cv`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cv_id: cvId, file_path: actualPath, format }) });
     const data = await response.json();
     if (!response.ok || !data.success) { console.error('❌ FastAPI Error:', data); return null; }
     console.log(`✅ Nhận kết quả từ Python: Score=${data.aiScore}`);
@@ -70,7 +75,7 @@ router.post('/upload', upload.single('cv'), async (req, res) => {
     await logActivity(id, 'UPLOAD_CV', 'CV', cvId, `Candidate uploaded CV: ${req.file.originalname}`);
     res.json({ message: 'Upload CV thành công! AI đang phân tích...', cv: { id: cvId, fileName: req.file.originalname, fileUrl, fileSize, format, isDefault: isFirstCV, aiParsed: false, aiScore: 0, extractedInfo: null, uploadedDate: new Date() } });
     const filePath = req.file.path;
-    parseWithAI(filePath, format, cvId).then(parsed => { if (parsed) saveAIResult(cvId, parsed); else saveAIFailure(cvId); });
+    parseWithAI(filePath, format, cvId, fileUrl).then(parsed => { if (parsed) saveAIResult(cvId, parsed); else saveAIFailure(cvId); });
   } catch (err) { console.error('POST /api/cv/upload error:', err); fs.unlink(req.file.path, () => {}); res.status(500).json({ message: 'Lỗi hệ thống.' }); }
 });
 
