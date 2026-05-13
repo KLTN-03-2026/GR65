@@ -217,6 +217,17 @@ export function CVManager() {
 
   const selectedCVData = cvs.find(cv => cv.id === selectedCV);
 
+  // Helper: đảm bảo giá trị luôn là string (tránh React error #31 khi AI trả object)
+  const safeRender = (val) => {
+    if (val == null) return "";
+    if (typeof val === "string") return val;
+    if (typeof val === "number") return String(val);
+    if (typeof val === "object") {
+      return val.degree || val.school || val.name || val.summary || val.value || JSON.stringify(val);
+    }
+    return String(val);
+  };
+
   // ── Render ─────────────────────────────────────
   return (
     <div className="space-y-6">
@@ -473,7 +484,7 @@ export function CVManager() {
                         <div className="p-3 bg-indigo-50 rounded-xl">
                           <div className="text-xs text-indigo-500 mb-1">Tóm tắt</div>
                           <div className="text-sm text-indigo-800" style={{ fontWeight: 500 }}>
-                            {selectedCVData.extractedInfo.summary}
+                            {safeRender(selectedCVData.extractedInfo.summary)}
                           </div>
                         </div>
                       )}
@@ -481,7 +492,7 @@ export function CVManager() {
                         <div className="p-3 bg-gray-50 rounded-xl">
                           <div className="text-xs text-gray-400 mb-1">Kinh nghiệm</div>
                           <div className="text-sm text-gray-700" style={{ fontWeight: 500 }}>
-                            {selectedCVData.extractedInfo.experience}
+                            {safeRender(selectedCVData.extractedInfo.experience)}
                           </div>
                         </div>
                       )}
@@ -489,7 +500,7 @@ export function CVManager() {
                         <div className="p-3 bg-gray-50 rounded-xl">
                           <div className="text-xs text-gray-400 mb-1">Học vấn</div>
                           <div className="text-sm text-gray-700" style={{ fontWeight: 500 }}>
-                            {selectedCVData.extractedInfo.education}
+                            {safeRender(selectedCVData.extractedInfo.education)}
                           </div>
                         </div>
                       )}
