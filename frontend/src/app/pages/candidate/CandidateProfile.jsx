@@ -112,8 +112,17 @@ export function CandidateProfile() {
             const eduParsed = typeof p.education === "string"
               ? JSON.parse(p.education)
               : p.education;
-            const safeStr = (val) =>
-              val == null ? "" : typeof val === "object" ? (val.degree || val.school || val.major || JSON.stringify(val)) : String(val);
+            const safeStr = (val) => {
+              if (val == null) return "";
+              if (typeof val === "string") return val;
+              if (typeof val === "number") return String(val);
+              if (typeof val === "object") {
+                // Nếu là object, lấy value đầu tiên có ý nghĩa
+                const flat = val.degree || val.school || val.major || val.name || val.value || "";
+                return typeof flat === "string" ? flat : JSON.stringify(val);
+              }
+              return String(val);
+            };
 
             // Chuyển links từ format cũ sang mảng mới
             let links = [];
