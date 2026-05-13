@@ -52,6 +52,21 @@ export function AuthPage() {
         setMode("login");
   }, [location.pathname]);
 
+  // Chặn nút Back sau khi đăng xuất — nếu không có token thì không cho quay lại trang trước
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      // Thêm entry vào history để khi bấm Back sẽ trigger popstate
+      window.history.pushState(null, '', window.location.href);
+      const handlePopState = () => {
+        // Người dùng bấm nút Back → đẩy lại về trang login
+        window.history.pushState(null, '', window.location.href);
+      };
+      window.addEventListener('popstate', handlePopState);
+      return () => window.removeEventListener('popstate', handlePopState);
+    }
+  }, []);
+
   // Callback xử lý kết quả Google Sign-In
   const handleGoogleCallback = useCallback(async (response) => {
     try {
@@ -70,9 +85,9 @@ export function AuthPage() {
       localStorage.setItem("user", JSON.stringify(data.user));
       toast.success("Đăng nhập Google thành công!");
       const serverRole = data.user.role?.toLowerCase();
-      if (serverRole === "admin") navigate("/admin");
-      else if (serverRole === "candidate") navigate("/candidate");
-      else if (serverRole === "employer") navigate("/employer");
+      if (serverRole === "admin") navigate("/admin", { replace: true });
+      else if (serverRole === "candidate") navigate("/candidate", { replace: true });
+      else if (serverRole === "employer") navigate("/employer", { replace: true });
     } catch (err) {
       console.error(err);
       toast.error("Không thể kết nối đến máy chủ.");
@@ -190,11 +205,11 @@ export function AuthPage() {
         // Điều hướng theo Role
         const serverRole = data.user.role?.toLowerCase();
         if (serverRole === "admin") {
-          navigate("/admin");
+          navigate("/admin", { replace: true });
         } else if (serverRole === "candidate") {
-          navigate("/candidate");
+          navigate("/candidate", { replace: true });
         } else if (serverRole === "employer") {
-          navigate("/employer");
+          navigate("/employer", { replace: true });
         }
 
       } else if (mode === "register") {

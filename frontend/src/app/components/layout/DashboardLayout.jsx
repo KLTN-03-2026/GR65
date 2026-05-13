@@ -144,7 +144,9 @@ export function DashboardLayout({ children, navItems, role, userName, userAvatar
             if (window.confirm("Bạn có chắc chắn muốn đăng xuất ?")) {
               localStorage.removeItem("token");
               localStorage.removeItem("user");
-              navigate("/login");
+              // Xóa toàn bộ lịch sử điều hướng để ngăn quay lại trang trước
+              window.history.replaceState(null, '', '/login');
+              navigate("/login", { replace: true });
             }
           }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-500 hover:text-red-500 hover:bg-red-50 transition-all">
             <LogOut className="w-4 h-4" />
