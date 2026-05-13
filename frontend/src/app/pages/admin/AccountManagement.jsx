@@ -49,7 +49,7 @@ export function AccountManagement() {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const handleToggleStatus = async (userId, currentStatus, name) => {
+  const handleToggleStatus = async (userId, currentStatus, name, email) => {
     const newStatus = currentStatus === "active" ? "suspended" : "active";
     const action = newStatus === "active" ? "mở khóa" : "khóa";
     if (!window.confirm(`Bạn có chắc chắn muốn ${action} tài khoản "${name}" không?`)) return;
@@ -60,6 +60,44 @@ export function AccountManagement() {
       setUsers(prev => prev.map(u =>
         u.Id === userId ? { ...u, Status: newStatus } : u
       ));
+
+      // Nếu khóa tài khoản → hỏi admin có muốn gửi email thông báo không
+      if (newStatus === "suspended") {
+        const sendEmail = window.confirm(`Bạn có muốn gửi email thông báo khóa tài khoản tới "${name}" (${email}) không?`);
+        if (sendEmail) {
+          try {
+            await api.post(`/api/admin/email/user/${userId}`, {
+              subject: "⚠️ Thông báo: Tài khoản của bạn đã bị tạm khóa — AIRecruit",
+              content: `
+                <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:520px;margin:auto;padding:32px;border:1px solid #e5e7eb;border-radius:16px;background:#ffffff">
+                  <div style="text-align:center;margin-bottom:24px">
+                    <div style="display:inline-block;background:#fef2f2;border-radius:50%;padding:16px;margin-bottom:12px">
+                      <span style="font-size:32px">🔒</span>
+                    </div>
+                    <h2 style="color:#dc2626;margin:0;font-size:20px">Tài khoản đã bị tạm khóa</h2>
+                  </div>
+                  <p style="color:#374151;font-size:15px;line-height:1.6">Xin chào <strong>${name}</strong>,</p>
+                  <p style="color:#374151;font-size:15px;line-height:1.6">Chúng tôi thông báo rằng tài khoản của bạn trên hệ thống <strong>AIRecruit</strong> đã bị <span style="color:#dc2626;font-weight:600">tạm khóa</span> bởi quản trị viên.</p>
+                  <div style="background:#fef2f2;border-left:4px solid #dc2626;padding:16px;border-radius:8px;margin:20px 0">
+                    <p style="color:#991b1b;margin:0;font-size:14px"><strong>Lý do:</strong> Vi phạm quy định hoặc yêu cầu xác minh tài khoản.</p>
+                  </div>
+                  <p style="color:#374151;font-size:15px;line-height:1.6">Nếu bạn cho rằng đây là nhầm lẫn, vui lòng liên hệ quản trị viên để được hỗ trợ:</p>
+                  <div style="text-align:center;margin:24px 0">
+                    <a href="mailto:admin@airecruit.vn" style="display:inline-block;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px">📧 Liên hệ quản trị viên</a>
+                  </div>
+                  <hr style="border:none;border-top:1px solid #f3f4f6;margin:24px 0" />
+                  <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0">© ${new Date().getFullYear()} AIRecruit — Hệ thống tuyển dụng thông minh tích hợp AI</p>
+                </div>
+              `,
+              isHtml: true
+            });
+            toast.success(`📧 Email thông báo đã gửi tới ${email}`);
+          } catch (emailErr) {
+            console.error("Error sending lock notification email:", emailErr);
+            toast.error("Không thể gửi email thông báo. Kiểm tra cấu hình SMTP.");
+          }
+        }
+      }
     } catch (err) {
       console.error("Error toggling user status:", err);
       toast.error("Lỗi khi cập nhật trạng thái tài khoản");
@@ -162,13 +200,13 @@ export function AccountManagement() {
                       <button onClick={() => toast.info(`Xem chi tiết ${displayName}`)} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
                         <Eye className="w-4 h-4" />
                       </button>
-                      {u.Role === "Candidate" && (
-                      <button onClick={() => handleSendEmail(u.Id, u.Email)} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                      {u.Role !== "Admin" && (
+                      <button onClick={() => handleSendEmail(u.Id, u.Email)} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Gửi email">
                         <Mail className="w-4 h-4" />
                       </button>
                       )}
                       {u.Role !== "Admin" && (
-                      <button onClick={() => handleToggleStatus(u.Id, status, displayName)} className={`p-2 rounded-lg transition-colors ${status === "active" ? "text-gray-400 hover:text-red-500 hover:bg-red-50" : "text-red-400 hover:text-emerald-600 hover:bg-emerald-50"}`}>
+                      <button onClick={() => handleToggleStatus(u.Id, status, displayName, u.Email)} className={`p-2 rounded-lg transition-colors ${status === "active" ? "text-gray-400 hover:text-red-500 hover:bg-red-50" : "text-red-400 hover:text-emerald-600 hover:bg-emerald-50"}`} title={status === "active" ? "Khóa tài khoản" : "Mở khóa tài khoản"}>
                         {status === "active" ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
                       </button>
                       )}

@@ -275,6 +275,23 @@ router.post('/login', async (req, res) => {
       .input('id', sql.UniqueIdentifier, user.Id)
       .query("UPDATE Users SET LoginAttempts = 0, LockoutUntil = NULL WHERE Id = @id");
 
+    // Kiểm tra tài khoản bị khóa bởi Admin (Status = 'suspended' trong bảng Candidates/Employers)
+    if (user.Role === 'Candidate') {
+      const statusCheck = await pool.request()
+        .input('UserId', sql.UniqueIdentifier, user.Id)
+        .query("SELECT Status FROM Candidates WHERE UserId = @UserId");
+      if (statusCheck.recordset[0]?.Status === 'suspended') {
+        return res.status(403).json({ message: 'Tài khoản của bạn đã bị khóa bởi quản trị viên. Vui lòng liên hệ admin để được hỗ trợ.' });
+      }
+    } else if (user.Role === 'Employer') {
+      const statusCheck = await pool.request()
+        .input('UserId', sql.UniqueIdentifier, user.Id)
+        .query("SELECT Status FROM Employers WHERE UserId = @UserId");
+      if (statusCheck.recordset[0]?.Status === 'suspended') {
+        return res.status(403).json({ message: 'Tài khoản của bạn đã bị khóa bởi quản trị viên. Vui lòng liên hệ admin để được hỗ trợ.' });
+      }
+    }
+
     // Load profile info dựa trên role (giữ nguyên logic cũ)
     let profile = null;
     if (user.Role === 'Candidate') {
@@ -524,6 +541,23 @@ router.post('/google', async (req, res) => {
           .input('Id', sql.UniqueIdentifier, user.Id)
           .input('GoogleId', sql.NVarChar, googleId)
           .query("UPDATE Users SET GoogleId = @GoogleId, AuthProvider = 'google' WHERE Id = @Id");
+      }
+    }
+
+    // Kiểm tra tài khoản bị khóa bởi Admin
+    if (user.Role === 'Candidate') {
+      const statusCheck = await pool.request()
+        .input('CheckUserId', sql.UniqueIdentifier, user.Id)
+        .query("SELECT Status FROM Candidates WHERE UserId = @CheckUserId");
+      if (statusCheck.recordset[0]?.Status === 'suspended') {
+        return res.status(403).json({ message: 'Tài khoản của bạn đã bị khóa bởi quản trị viên. Vui lòng liên hệ admin để được hỗ trợ.' });
+      }
+    } else if (user.Role === 'Employer') {
+      const statusCheck = await pool.request()
+        .input('CheckUserId', sql.UniqueIdentifier, user.Id)
+        .query("SELECT Status FROM Employers WHERE UserId = @CheckUserId");
+      if (statusCheck.recordset[0]?.Status === 'suspended') {
+        return res.status(403).json({ message: 'Tài khoản của bạn đã bị khóa bởi quản trị viên. Vui lòng liên hệ admin để được hỗ trợ.' });
       }
     }
 

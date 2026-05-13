@@ -1818,11 +1818,11 @@ router.post('/email/user/:id', async (req, res) => {
 
     const user = result.recordset[0];
 
-    // Check if user is a Candidate
-    if (user.Role !== 'Candidate') {
+    // Chỉ cho phép gửi email cho Candidate và Employer
+    if (!['Candidate', 'Employer'].includes(user.Role)) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Chức năng này hiện chỉ hỗ trợ gửi email cho tài khoản Ứng viên (Candidate).' 
+        message: 'Chỉ hỗ trợ gửi email cho tài khoản Ứng viên hoặc Nhà tuyển dụng.' 
       });
     }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FileCheck, Briefcase, FileText, CheckCircle, XCircle, AlertCircle, Clock, Loader2 } from "lucide-react";
+import { FileCheck, Briefcase, FileText, CheckCircle, XCircle, AlertCircle, Clock, Loader2, Search, ChevronDown, Trash2, Eye, ExternalLink, Download } from "lucide-react";
 import api from "../../../lib/api";
 import { toast } from "sonner";
 
@@ -34,14 +34,16 @@ export function ContentModeration() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedDetail, setSelectedDetail] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("pending");
+  const [searchQuery, setSearchQuery] = useState("");
 
-  const fetchData = async () => {
+  const fetchData = async (status = "pending", search = "") => {
     setLoading(true);
     try {
-      const [resJobs, resCVs] = await Promise.all([
-        api.get('/api/admin/jobs?status=pending&limit=50'),
-        api.get('/api/admin/cvs?status=pending&limit=50')
-      ]);
+      let jobUrl = `/api/admin/jobs?limit=50&status=${status}`;
+      let cvUrl = `/api/admin/cvs?limit=50&status=${status}`;
+      if (search) { jobUrl += `&search=${search}`; cvUrl += `&search=${search}`; }
+      const [resJobs, resCVs] = await Promise.all([api.get(jobUrl), api.get(cvUrl)]);
       setPendingJobs(resJobs.data.data || []);
       setPendingCVs(resCVs.data.data || []);
     } catch (err) {
@@ -52,18 +54,43 @@ export function ContentModeration() {
     }
   };
 
+  useEffect(() => { fetchData(statusFilter, searchQuery); }, [statusFilter]);
   useEffect(() => {
-    fetchData();
-  }, []);
+    const t = setTimeout(() => fetchData(statusFilter, searchQuery), 400);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
   const handleSelectJob = async (job) => {
-    setSelectedItem(job);
+    setSelectedItem({ ...job, _type: "job" });
     try {
       const res = await api.get(`/api/admin/jobs/${job.Id}`);
-      setSelectedDetail(res.data.data);
+      setSelectedDetail({ ...res.data.data, _type: "job" });
     } catch (err) {
       console.error("Error loading job detail:", err);
       setSelectedDetail(null);
+    }
+  };
+
+  const handleSelectCV = async (cv) => {
+    setSelectedItem({ ...cv, _type: "cv" });
+    try {
+      const res = await api.get(`/api/admin/cvs/${cv.Id}`);
+      setSelectedDetail({ ...res.data.data, _type: "cv" });
+    } catch (err) {
+      console.error("Error loading CV detail:", err);
+      setSelectedDetail(null);
+    }
+  };
+
+  const deleteCV = async (id) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa CV này?")) return;
+    try {
+      await api.delete(`/api/admin/cvs/${id}`);
+      setPendingCVs(prev => prev.filter(c => c.Id !== id));
+      if (selectedItem?.Id === id) { setSelectedItem(null); setSelectedDetail(null); }
+      toast.success("Đã xóa CV");
+    } catch (err) {
+      toast.error("Lỗi khi xóa CV");
     }
   };
 
@@ -136,8 +163,8 @@ export function ContentModeration() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         {[
-        { label: "JD chờ duyệt", value: pendingJobs.length, color: "bg-amber-50 text-amber-600", icon: Briefcase },
-        { label: "CV chờ duyệt", value: pendingCVs.length, color: "bg-blue-50 text-blue-600", icon: FileText },
+        { label: "JD hiển thị", value: pendingJobs.length, color: "bg-amber-50 text-amber-600", icon: Briefcase },
+        { label: "CV hiển thị", value: pendingCVs.length, color: "bg-blue-50 text-blue-600", icon: FileText },
         { label: "Nguy cơ cao", value: pendingJobs.filter(j => evaluateJobRisk(j) === "high").length + pendingCVs.filter(c => evaluateCVRisk(c) === "high").length, color: "bg-red-50 text-red-600", icon: AlertCircle }].
         map((s) =>
         <div key={s.label} className={`${s.color} rounded-2xl p-4 flex items-center gap-3`}>
@@ -150,17 +177,31 @@ export function ContentModeration() {
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
-        {[
-        { key: "jd", label: "Bài đăng JD", count: pendingJobs.length },
-        { key: "cv", label: "CV ứng viên", count: pendingCVs.length }].
-        map((tab) =>
-        <button key={tab.key} onClick={() => { setActiveTab(tab.key); setSelectedItem(null); setSelectedDetail(null); }} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all ${activeTab === tab.key ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
-            {tab.label}
-            <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === tab.key ? "bg-amber-100 text-amber-600" : "bg-gray-200 text-gray-500"}`}>{tab.count}</span>
-          </button>
-        )}
+      {/* Tabs + Filter */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+          {[
+          { key: "jd", label: "Bài đăng JD", count: pendingJobs.length },
+          { key: "cv", label: "CV ứng viên", count: pendingCVs.length }].
+          map((tab) =>
+          <button key={tab.key} onClick={() => { setActiveTab(tab.key); setSelectedItem(null); setSelectedDetail(null); }} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all ${activeTab === tab.key ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+              {tab.label}
+              <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === tab.key ? "bg-amber-100 text-amber-600" : "bg-gray-200 text-gray-500"}`}>{tab.count}</span>
+            </button>
+          )}
+        </div>
+        <div className="relative">
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="pl-3 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none appearance-none text-gray-600">
+            <option value="pending">Chờ duyệt</option>
+            <option value="active">Đã duyệt</option>
+            <option value="rejected">Đã từ chối</option>
+          </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        </div>
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Tìm kiếm..." className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-5 gap-5">
@@ -187,6 +228,7 @@ export function ContentModeration() {
                     <span>•</span>
                     {item.SalaryRange || "Thỏa thuận"}
                   </div>
+                  {statusFilter === "pending" && (
                   <div className="flex gap-2">
                     <button onClick={(e) => {e.stopPropagation();approveJD(item.Id);}} className="flex-1 flex items-center justify-center gap-1 text-xs bg-emerald-50 text-emerald-600 py-2 rounded-lg hover:bg-emerald-100 transition-colors">
                       <CheckCircle className="w-3.5 h-3.5" /> Duyệt
@@ -195,6 +237,7 @@ export function ContentModeration() {
                       <XCircle className="w-3.5 h-3.5" /> Từ chối
                     </button>
                   </div>
+                  )}
                 </div>);
           }) :
           <div className="bg-white rounded-2xl p-10 text-center shadow-sm border border-gray-100">
@@ -207,7 +250,7 @@ export function ContentModeration() {
             const initials = (cv.CandidateName || "?").split(" ").map(n => n[0]).join("").slice(0, 2);
             const ext = cv.FileName?.split('.').pop()?.toUpperCase() || "N/A";
             return (
-              <div key={cv.Id} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+              <div key={cv.Id} onClick={() => handleSelectCV(cv)} className={`bg-white rounded-2xl border-2 p-4 cursor-pointer transition-all ${selectedItem?.Id === cv.Id ? "border-indigo-400 shadow-md" : "border-gray-100 hover:border-gray-200 shadow-sm"}`}>
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs flex-shrink-0" style={{ fontWeight: 700 }}>
                       {initials}
@@ -221,26 +264,28 @@ export function ContentModeration() {
                   <div className="text-xs text-gray-400 mb-3 flex items-center gap-1">
                     <Clock className="w-3 h-3" /> {cv.UploadedDate ? new Date(cv.UploadedDate).toLocaleDateString("vi-VN") : "N/A"}
                   </div>
+                  {statusFilter === "pending" && (
                   <div className="flex gap-2">
-                    <button onClick={() => approveCV(cv.Id)} className="flex-1 flex items-center justify-center gap-1 text-xs bg-emerald-50 text-emerald-600 py-2 rounded-lg hover:bg-emerald-100 transition-colors">
+                    <button onClick={(e) => {e.stopPropagation();approveCV(cv.Id);}} className="flex-1 flex items-center justify-center gap-1 text-xs bg-emerald-50 text-emerald-600 py-2 rounded-lg hover:bg-emerald-100 transition-colors">
                       <CheckCircle className="w-3.5 h-3.5" /> Duyệt
                     </button>
-                    <button onClick={() => rejectCV(cv.Id)} className="flex-1 flex items-center justify-center gap-1 text-xs bg-red-50 text-red-500 py-2 rounded-lg hover:bg-red-100 transition-colors">
+                    <button onClick={(e) => {e.stopPropagation();rejectCV(cv.Id);}} className="flex-1 flex items-center justify-center gap-1 text-xs bg-red-50 text-red-500 py-2 rounded-lg hover:bg-red-100 transition-colors">
                       <XCircle className="w-3.5 h-3.5" /> Từ chối
                     </button>
                   </div>
+                  )}
                 </div>);
           }) :
           <div className="bg-white rounded-2xl p-10 text-center shadow-sm border border-gray-100">
                 <CheckCircle className="w-10 h-10 text-emerald-200 mx-auto mb-3" />
-                <p className="text-sm text-gray-400">Không có CV nào chờ duyệt</p>
+                <p className="text-sm text-gray-400">Không có CV nào</p>
               </div>
           }
         </div>
 
-        {/* JD detail */}
+        {/* Detail panel */}
         <div className="lg:col-span-3">
-          {selectedDetail && activeTab === "jd" ?
+          {selectedDetail && selectedDetail._type === "job" ?
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
               <div className="flex items-start gap-4">
                 <div className="w-14 h-14 rounded-xl flex items-center justify-center text-white flex-shrink-0" style={{ fontWeight: 700, fontSize: 18, backgroundColor: "#6366f1" }}>
@@ -291,6 +336,7 @@ export function ContentModeration() {
                 </div>
             }
 
+              {statusFilter === "pending" && (
               <div className="flex gap-3 pt-2">
                 <button onClick={() => rejectJD(selectedDetail.Id)} className="flex-1 flex items-center justify-center gap-2 border-2 border-red-200 text-red-500 py-3 rounded-xl text-sm hover:bg-red-50 transition-colors">
                   <XCircle className="w-4 h-4" /> Từ chối bài đăng
@@ -299,11 +345,69 @@ export function ContentModeration() {
                   <CheckCircle className="w-4 h-4" /> Duyệt & Công khai
                 </button>
               </div>
+              )}
             </div> :
 
+          selectedDetail && selectedDetail._type === "cv" ?
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+              <div className="flex items-start gap-4">
+                <div className="w-14 h-14 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 flex-shrink-0" style={{ fontWeight: 700, fontSize: 18 }}>
+                  {(selectedDetail.CandidateName || "?").split(" ").map(n => n[0]).join("").slice(0, 2)}
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-gray-900 mb-1">{selectedDetail.CandidateName}</h2>
+                  <p className="text-gray-500 text-sm">{selectedDetail.CandidateEmail}</p>
+                </div>
+                <span className={`text-xs px-3 py-1.5 rounded-xl border ${riskConfig[evaluateCVRisk(selectedDetail)].color}`}>
+                  Nguy cơ: {riskConfig[evaluateCVRisk(selectedDetail)].label}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <div className="text-xs text-gray-400 mb-1">Tên file</div>
+                  <div className="text-sm text-gray-900" style={{ fontWeight: 500 }}>{selectedDetail.FileName || "N/A"}</div>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <div className="text-xs text-gray-400 mb-1">Ngày tải lên</div>
+                  <div className="text-sm text-gray-900" style={{ fontWeight: 500 }}>{selectedDetail.UploadedDate ? new Date(selectedDetail.UploadedDate).toLocaleDateString("vi-VN") : "N/A"}</div>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <div className="text-xs text-gray-400 mb-1">AI Score</div>
+                  <div className="text-sm text-gray-900" style={{ fontWeight: 500 }}>{selectedDetail.AIScore ?? "Chưa phân tích"}</div>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <div className="text-xs text-gray-400 mb-1">AI Parsed</div>
+                  <div className="text-sm text-gray-900" style={{ fontWeight: 500 }}>{selectedDetail.AIParsed ? "✅ Đã bóc tách" : "❌ Chưa bóc tách"}</div>
+                </div>
+              </div>
+              {selectedDetail.FileUrl && (
+              <a href={selectedDetail.FileUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-4 py-3 rounded-xl">
+                <ExternalLink className="w-4 h-4" /> Xem / Tải CV gốc
+              </a>
+              )}
+              {selectedDetail.ParsedContent && (
+              <div>
+                <div className="text-xs text-gray-400 mb-2">Nội dung bóc tách</div>
+                <div className="p-4 bg-gray-50 rounded-xl text-sm text-gray-600 leading-relaxed max-h-60 overflow-y-auto whitespace-pre-wrap">{typeof selectedDetail.ParsedContent === 'string' ? selectedDetail.ParsedContent : JSON.stringify(selectedDetail.ParsedContent, null, 2)}</div>
+              </div>
+              )}
+              {statusFilter === "pending" && (
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => { rejectCV(selectedDetail.Id); }} className="flex-1 flex items-center justify-center gap-2 border-2 border-red-200 text-red-500 py-3 rounded-xl text-sm hover:bg-red-50 transition-colors">
+                  <XCircle className="w-4 h-4" /> Từ chối CV
+                </button>
+                <button onClick={() => { approveCV(selectedDetail.Id); }} className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl text-sm transition-colors">
+                  <CheckCircle className="w-4 h-4" /> Duyệt CV
+                </button>
+              </div>
+              )}
+              <button onClick={() => deleteCV(selectedDetail.Id)} className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 py-2.5 rounded-xl text-sm transition-colors">
+                <Trash2 className="w-4 h-4" /> Xóa CV vĩnh viễn
+              </button>
+            </div> :
           <div className="bg-white rounded-2xl p-12 text-center shadow-sm border border-gray-100">
               <FileCheck className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-              <p className="text-sm text-gray-400">{activeTab === "jd" ? "Chọn một bài đăng để xem chi tiết và kiểm duyệt" : "Danh sách CV đang hiển thị bên trái"}</p>
+              <p className="text-sm text-gray-400">Chọn một mục để xem chi tiết và kiểm duyệt</p>
             </div>
           }
         </div>
