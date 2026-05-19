@@ -70,7 +70,7 @@ export function CandidateProfile() {
   // ── Lấy dữ liệu hồ sơ từ API khi component mount ──
   useEffect(() => {
     const fetchProfile = async () => {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token");
       if (!token) { setLoading(false); return; }
 
       try {
@@ -164,7 +164,7 @@ export function CandidateProfile() {
 
   const handleSave = async () => {
     setSaving(true);
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     try {
       const expectedSalary = career.salaryMin && career.salaryMax
         ? `${career.salaryMin} - ${career.salaryMax}`
@@ -237,7 +237,7 @@ export function CandidateProfile() {
       return;
     }
     setSaving(true);
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     try {
       const res = await fetch(`${API_URL}/api/profile/change-password`, {
         method: "PUT",
@@ -792,7 +792,7 @@ export function CandidateProfile() {
               {/* ── TAB: Security ── */}
               {activeTab === "security" &&
               <div className="space-y-6">
-                  {JSON.parse(localStorage.getItem('user') || '{}')?.authProvider === 'google' ? (
+                  {JSON.parse(sessionStorage.getItem('user') || '{}')?.authProvider === 'google' ? (
                     <div className="bg-blue-50 border border-blue-100 rounded-xl p-6 text-center">
                       <Shield className="w-10 h-10 text-blue-400 mx-auto mb-3" />
                       <p className="text-sm text-blue-700" style={{ fontWeight: 600 }}>Tài khoản đăng nhập bằng Google</p>

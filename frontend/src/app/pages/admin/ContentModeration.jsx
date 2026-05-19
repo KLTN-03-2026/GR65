@@ -36,6 +36,7 @@ export function ContentModeration() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("pending");
   const [searchQuery, setSearchQuery] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
 
   const fetchData = async (status = "pending", search = "") => {
     setLoading(true);
@@ -132,12 +133,14 @@ export function ContentModeration() {
     }
   };
 
-  const rejectCV = async (id) => {
+  const rejectCV = async (id, reason = "") => {
     try {
-      await api.put(`/api/admin/cvs/${id}/status`, { status: "rejected" });
+      await api.put(`/api/admin/cvs/${id}/status`, { status: "rejected", reason });
       const item = pendingCVs.find(c => c.Id === id);
       setPendingCVs(prev => prev.filter(c => c.Id !== id));
-      toast.error(`Đã từ chối CV của "${item?.CandidateName}"`);
+      if (selectedItem?.Id === id) { setSelectedItem(null); setSelectedDetail(null); }
+      setRejectReason("");
+      toast.success(`Đã từ chối CV của "${item?.CandidateName}"`);
     } catch (err) {
       console.error("Error rejecting CV:", err);
       toast.error("Lỗi khi từ chối CV");
@@ -317,14 +320,72 @@ export function ContentModeration() {
                   <div className="text-xs text-gray-400 mb-1">Địa điểm</div>
                   <div className="text-sm text-gray-900" style={{ fontWeight: 500 }}>{selectedDetail.Location || "N/A"}</div>
                 </div>
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <div className="text-xs text-gray-400 mb-1">Danh mục</div>
+                  <div className="text-sm text-gray-900" style={{ fontWeight: 500 }}>{selectedDetail.Category || "N/A"}</div>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <div className="text-xs text-gray-400 mb-1">Kinh nghiệm</div>
+                  <div className="text-sm text-gray-900" style={{ fontWeight: 500 }}>{selectedDetail.ExperienceReq || "Không yêu cầu"}</div>
+                </div>
               </div>
 
+              {/* Skills */}
+              {selectedDetail.SkillsReqJson && (() => {
+                try {
+                  const skills = JSON.parse(selectedDetail.SkillsReqJson);
+                  if (skills.length > 0) return (
+                    <div>
+                      <div className="text-xs text-gray-400 mb-2">Kỹ năng yêu cầu</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {skills.map((s, i) => <span key={i} className="text-xs bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-lg">{s}</span>)}
+                      </div>
+                    </div>
+                  );
+                } catch { return null; }
+              })()}
+
+              {/* Description */}
               <div>
                 <div className="text-xs text-gray-400 mb-2">Nội dung mô tả</div>
-                <div className={`p-4 rounded-xl text-sm text-gray-600 leading-relaxed ${evaluateJobRisk(selectedDetail) === "high" ? "bg-red-50 border border-red-100" : "bg-gray-50"}`}>
+                <div className={`p-4 rounded-xl text-sm text-gray-600 leading-relaxed whitespace-pre-wrap ${evaluateJobRisk(selectedDetail) === "high" ? "bg-red-50 border border-red-100" : "bg-gray-50"}`}>
                   {selectedDetail.Description || "Không có mô tả."}
                 </div>
               </div>
+
+              {/* Requirements */}
+              {selectedDetail.Requirements && (() => {
+                try {
+                  const reqs = typeof selectedDetail.Requirements === 'string' && selectedDetail.Requirements.startsWith('[')
+                    ? JSON.parse(selectedDetail.Requirements)
+                    : selectedDetail.Requirements.split('\n').filter(Boolean);
+                  if (reqs.length > 0) return (
+                    <div>
+                      <div className="text-xs text-gray-400 mb-2">Yêu cầu ứng viên</div>
+                      <ul className="space-y-1.5">
+                        {reqs.map((r, i) => <li key={i} className="flex items-center gap-2 text-sm text-gray-600"><div className="w-1.5 h-1.5 bg-indigo-400 rounded-full flex-shrink-0" />{r}</li>)}
+                      </ul>
+                    </div>
+                  );
+                } catch { return null; }
+              })()}
+
+              {/* Benefits */}
+              {selectedDetail.Benefits && (() => {
+                try {
+                  const bens = typeof selectedDetail.Benefits === 'string' && selectedDetail.Benefits.startsWith('[')
+                    ? JSON.parse(selectedDetail.Benefits)
+                    : selectedDetail.Benefits.split('\n').filter(Boolean);
+                  if (bens.length > 0) return (
+                    <div>
+                      <div className="text-xs text-gray-400 mb-2">Phúc lợi</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {bens.map((b, i) => <span key={i} className="text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg border border-emerald-100">{b}</span>)}
+                      </div>
+                    </div>
+                  );
+                } catch { return null; }
+              })()}
 
               {evaluateJobRisk(selectedDetail) === "high" &&
             <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
@@ -385,20 +446,63 @@ export function ContentModeration() {
                 <ExternalLink className="w-4 h-4" /> Xem / Tải CV gốc
               </a>
               )}
-              {selectedDetail.ParsedContent && (
-              <div>
-                <div className="text-xs text-gray-400 mb-2">Nội dung bóc tách</div>
-                <div className="p-4 bg-gray-50 rounded-xl text-sm text-gray-600 leading-relaxed max-h-60 overflow-y-auto whitespace-pre-wrap">{typeof selectedDetail.ParsedContent === 'string' ? selectedDetail.ParsedContent : JSON.stringify(selectedDetail.ParsedContent, null, 2)}</div>
-              </div>
-              )}
+
+              {/* Nội dung AI bóc tách chi tiết */}
+              {selectedDetail.AIExtractedJson && (() => {
+                try {
+                  const ai = typeof selectedDetail.AIExtractedJson === 'string' ? JSON.parse(selectedDetail.AIExtractedJson) : selectedDetail.AIExtractedJson;
+                  return (
+                    <div className="space-y-3">
+                      <div className="text-xs text-gray-400 font-medium">📋 Nội dung AI bóc tách</div>
+                      {ai.name && (
+                        <div className="bg-gray-50 rounded-xl p-3">
+                          <div className="text-xs text-gray-400 mb-1">Họ tên</div>
+                          <div className="text-sm text-gray-900" style={{ fontWeight: 500 }}>{ai.name}</div>
+                        </div>
+                      )}
+                      {ai.skills && ai.skills.length > 0 && (
+                        <div>
+                          <div className="text-xs text-gray-400 mb-2">Kỹ năng</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {ai.skills.map((s, i) => <span key={i} className="text-xs bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-lg">{typeof s === 'string' ? s : JSON.stringify(s)}</span>)}
+                          </div>
+                        </div>
+                      )}
+                      {ai.experience && (
+                        <div>
+                          <div className="text-xs text-gray-400 mb-2">Kinh nghiệm</div>
+                          <div className="p-3 bg-gray-50 rounded-xl text-sm text-gray-600 leading-relaxed max-h-40 overflow-y-auto whitespace-pre-wrap">
+                            {Array.isArray(ai.experience) ? ai.experience.map((e, i) => <div key={i} className="mb-1">• {typeof e === 'string' ? e : (e.company || e.position || JSON.stringify(e))}</div>) : String(ai.experience)}
+                          </div>
+                        </div>
+                      )}
+                      {ai.education && (
+                        <div>
+                          <div className="text-xs text-gray-400 mb-2">Học vấn</div>
+                          <div className="p-3 bg-gray-50 rounded-xl text-sm text-gray-600 leading-relaxed max-h-40 overflow-y-auto whitespace-pre-wrap">
+                            {Array.isArray(ai.education) ? ai.education.map((e, i) => <div key={i} className="mb-1">• {typeof e === 'string' ? e : (e.school || e.degree || JSON.stringify(e))}</div>) : String(ai.education)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                } catch { return null; }
+              })()}
+
               {statusFilter === "pending" && (
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => { rejectCV(selectedDetail.Id); }} className="flex-1 flex items-center justify-center gap-2 border-2 border-red-200 text-red-500 py-3 rounded-xl text-sm hover:bg-red-50 transition-colors">
-                  <XCircle className="w-4 h-4" /> Từ chối CV
-                </button>
-                <button onClick={() => { approveCV(selectedDetail.Id); }} className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl text-sm transition-colors">
-                  <CheckCircle className="w-4 h-4" /> Duyệt CV
-                </button>
+              <div className="space-y-3 pt-2">
+                <div>
+                  <label className="text-xs text-gray-400 mb-1.5 block">Lý do từ chối (không bắt buộc)</label>
+                  <input value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="VD: CV không đúng định dạng, chứa nội dung không phù hợp..." className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20" />
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => { rejectCV(selectedDetail.Id, rejectReason); }} className="flex-1 flex items-center justify-center gap-2 border-2 border-red-200 text-red-500 py-3 rounded-xl text-sm hover:bg-red-50 transition-colors">
+                    <XCircle className="w-4 h-4" /> Từ chối CV
+                  </button>
+                  <button onClick={() => { approveCV(selectedDetail.Id); }} className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl text-sm transition-colors">
+                    <CheckCircle className="w-4 h-4" /> Duyệt CV
+                  </button>
+                </div>
               </div>
               )}
               <button onClick={() => deleteCV(selectedDetail.Id)} className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 py-2.5 rounded-xl text-sm transition-colors">

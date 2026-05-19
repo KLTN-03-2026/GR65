@@ -76,13 +76,13 @@ router.get('/', async (req, res) => {
       description: j.Description || '',
       requirements: j.Requirements
         ? (typeof j.Requirements === 'string' && j.Requirements.startsWith('[')
-            ? JSON.parse(j.Requirements)
-            : j.Requirements.split('\n').filter(Boolean))
+          ? JSON.parse(j.Requirements)
+          : j.Requirements.split('\n').filter(Boolean))
         : [],
       benefits: j.Benefits
         ? (typeof j.Benefits === 'string' && j.Benefits.startsWith('[')
-            ? JSON.parse(j.Benefits)
-            : j.Benefits.split('\n').filter(Boolean))
+          ? JSON.parse(j.Benefits)
+          : j.Benefits.split('\n').filter(Boolean))
         : [],
       category: j.Category || '',
       featured: !!j.IsFeatured,
@@ -110,7 +110,7 @@ router.get('/employer/me', authMiddleware, async (req, res) => {
   try {
     const { id, role } = req.user;
     if (role !== 'Employer') return res.status(403).json({ message: 'Chỉ công ty mới có quyền này.' });
-    
+
     const pool = await poolPromise;
     const result = await pool.request()
       .input('EmployerId', sql.UniqueIdentifier, id)
@@ -122,7 +122,7 @@ router.get('/employer/me', authMiddleware, async (req, res) => {
         WHERE j.EmployerId = @EmployerId
         ORDER BY j.CreatedAt DESC
       `);
-      
+
     const jobs = result.recordset.map(j => ({
       id: j.Id,
       title: j.Title,
@@ -158,7 +158,7 @@ router.post('/', authMiddleware, async (req, res) => {
   try {
     const { id, role } = req.user;
     if (role !== 'Employer') return res.status(403).json({ message: 'Chỉ công ty mới có quyền đăng.' });
-    
+
     const { title, location, type, salary, experience, skills, description, requirements, benefits, category } = req.body;
     const pool = await poolPromise;
 
@@ -166,26 +166,26 @@ router.post('/', authMiddleware, async (req, res) => {
     await pool.request()
       .input('Id', sql.UniqueIdentifier, jobId)
       .input('EmployerId', sql.UniqueIdentifier, id)
-      .input('Title', sql.NVarChar, title)
-      .input('Location', sql.NVarChar, location)
-      .input('JobType', sql.NVarChar, type)
-      .input('SalaryRange', sql.NVarChar, salary)
-      .input('ExperienceReq', sql.NVarChar, experience)
+      .input('Title', sql.NVarChar, title || '')
+      .input('Location', sql.NVarChar, location || '')
+      .input('JobType', sql.NVarChar, type || 'Full-time')
+      .input('SalaryRange', sql.NVarChar, salary || '')
+      .input('ExperienceReq', sql.NVarChar, experience || '')
       .input('SkillsReqJson', sql.NVarChar, JSON.stringify(skills || []))
-      .input('Description', sql.NVarChar, description)
+      .input('Description', sql.NVarChar, description || '')
       .input('Requirements', sql.NVarChar, JSON.stringify(requirements || []))
       .input('Benefits', sql.NVarChar, JSON.stringify(benefits || []))
-      .input('Category', sql.NVarChar, category)
+      .input('Category', sql.NVarChar, category || 'Khác')
       .query(`
-        INSERT INTO Jobs (Id, EmployerId, Title, Location, JobType, SalaryRange, ExperienceReq, SkillsReqJson, Description, Requirements, Benefits, Category, Status, CreatedAt)
-        VALUES (@Id, @EmployerId, @Title, @Location, @JobType, @SalaryRange, @ExperienceReq, @SkillsReqJson, @Description, @Requirements, @Benefits, @Category, 'active', GETDATE())
+        INSERT INTO Jobs (Id, EmployerId, Title, Location, JobType, SalaryRange, ExperienceReq, SkillsReqJson, Description, Requirements, Benefits, Category, Status, PostedDate, CreatedAt)
+        VALUES (@Id, @EmployerId, @Title, @Location, @JobType, @SalaryRange, @ExperienceReq, @SkillsReqJson, @Description, @Requirements, @Benefits, @Category, 'pending', GETDATE(), GETDATE())
       `);
-      
+
     await logActivity(id, 'POST_JOB', 'Job', jobId, `Employer posted a new job: ${title}`);
-    res.status(201).json({ message: 'Tạo công việc thành công!', jobId });
+    res.status(201).json({ message: 'Tạo công việc thành công! Bài đăng đang chờ Admin kiểm duyệt trước khi hiển thị.', jobId });
   } catch (err) {
-    console.error('Lỗi tao job:', err);
-    res.status(500).json({ message: 'Lỗi hệ thống.' });
+    console.error('Lỗi tao job:', err.message || err);
+    res.status(500).json({ message: err.message || 'Lỗi hệ thống.' });
   }
 });
 
@@ -196,7 +196,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const { id: empId, role } = req.user;
     if (role !== 'Employer') return res.status(403).json({ message: 'Chỉ công ty mới có quyền.' });
-    
+
     const { title, location, type, salary, experience, skills, description, requirements, benefits, category } = req.body;
     const jobId = req.params.id;
     const pool = await poolPromise;
@@ -227,7 +227,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
           Requirements = @Requirements, Benefits = @Benefits, Category = @Category, UpdatedAt = GETDATE()
         WHERE Id = @Id
       `);
-      
+
     res.json({ message: 'Cập nhật thành công!' });
   } catch (err) {
     console.error('Lỗi sua job:', err);
@@ -244,7 +244,7 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
     if (role !== 'Employer') return res.status(403).json({ message: 'Forbidden' });
     const jobId = req.params.id;
     const { status } = req.body; // 'active', 'closed'
-    
+
     const pool = await poolPromise;
     const check = await pool.request().input('Id', sql.UniqueIdentifier, jobId).input('EmployerId', sql.UniqueIdentifier, empId)
       .query('SELECT Id FROM Jobs WHERE Id = @Id AND EmployerId = @EmployerId');
@@ -252,7 +252,7 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
 
     await pool.request().input('Id', sql.UniqueIdentifier, jobId).input('Status', sql.NVarChar, status)
       .query("UPDATE Jobs SET Status = @Status, UpdatedAt = GETDATE() WHERE Id = @Id");
-      
+
     res.json({ message: 'Đổi trạng thái thành công!' });
   } catch (err) { res.status(500).json({ message: 'Lỗi hệ thống.' }); }
 });
@@ -265,7 +265,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     const { id: empId, role } = req.user;
     if (role !== 'Employer') return res.status(403).json({ message: 'Forbidden' });
     const jobId = req.params.id;
-    
+
     const pool = await poolPromise;
     const check = await pool.request().input('Id', sql.UniqueIdentifier, jobId).input('EmployerId', sql.UniqueIdentifier, empId)
       .query('SELECT Id FROM Jobs WHERE Id = @Id AND EmployerId = @EmployerId');
@@ -274,7 +274,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     // Giải pháp thực tế: Nếu đã có người nộp CV -> Ràng buộc không cho xóa, chỉ cho Closed
     const apps = await pool.request().input('JobId', sql.UniqueIdentifier, jobId)
       .query('SELECT COUNT(*) as AppCount FROM Applications WHERE JobId = @JobId');
-    
+
     if (apps.recordset[0].AppCount > 0) {
       // Đã có ứng viên, tự động chuyển về trạng thái mồ côi 'closed' thay vì DELETE
       await pool.request().input('Id', sql.UniqueIdentifier, jobId)
@@ -328,13 +328,13 @@ router.get('/:id', async (req, res) => {
       description: j.Description || '',
       requirements: j.Requirements
         ? (typeof j.Requirements === 'string' && j.Requirements.startsWith('[')
-            ? JSON.parse(j.Requirements)
-            : j.Requirements.split('\n').filter(Boolean))
+          ? JSON.parse(j.Requirements)
+          : j.Requirements.split('\n').filter(Boolean))
         : [],
       benefits: j.Benefits
         ? (typeof j.Benefits === 'string' && j.Benefits.startsWith('[')
-            ? JSON.parse(j.Benefits)
-            : j.Benefits.split('\n').filter(Boolean))
+          ? JSON.parse(j.Benefits)
+          : j.Benefits.split('\n').filter(Boolean))
         : [],
       category: j.Category || '',
       featured: !!j.IsFeatured,

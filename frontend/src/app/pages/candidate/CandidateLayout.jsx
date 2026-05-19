@@ -27,7 +27,7 @@ export function CandidateLayout() {
   const [userAvatar, setUserAvatar] = useState("?");
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) return;
 
     fetch(`${API_BASE}/api/profile/me`, {

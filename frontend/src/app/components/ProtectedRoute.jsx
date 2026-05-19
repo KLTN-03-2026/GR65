@@ -7,7 +7,7 @@ import { Navigate } from "react-router";
  * @param {string|string[]} allowedRoles - Role được phép truy cập (vd: "Candidate", "Employer", "Admin")
  */
 export function ProtectedRoute({ children, allowedRoles }) {
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
 
   // Chưa đăng nhập → redirect về /login
   if (!token) {
@@ -37,14 +37,14 @@ export function ProtectedRoute({ children, allowedRoles }) {
 
     // Kiểm tra token hết hạn
     if (payload.exp && Date.now() >= payload.exp * 1000) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
+      sessionStorage.removeItem("token");
+      sessionStorage.removeItem("user");
       return <Navigate to="/login" replace />;
     }
   } catch {
     // Token không hợp lệ → xóa và redirect
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("user");
     return <Navigate to="/login" replace />;
   }
 

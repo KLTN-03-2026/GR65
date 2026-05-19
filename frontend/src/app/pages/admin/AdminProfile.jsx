@@ -303,7 +303,7 @@ export function AdminProfile() {
               {/* TAB: Security */}
               {activeTab === "security" &&
               <div className="space-y-6">
-                  {JSON.parse(localStorage.getItem('user') || '{}')?.authProvider === 'google' ? (
+                  {JSON.parse(sessionStorage.getItem('user') || '{}')?.authProvider === 'google' ? (
                     <div className="bg-red-50 border border-red-100 rounded-xl p-6 text-center">
                       <Shield className="w-10 h-10 text-red-400 mx-auto mb-3" />
                       <p className="text-sm text-red-700" style={{ fontWeight: 600 }}>Tài khoản đăng nhập bằng Google</p>

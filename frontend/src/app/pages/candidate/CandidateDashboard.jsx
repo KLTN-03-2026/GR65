@@ -18,7 +18,7 @@ const statusConfig = {
 
 export function CandidateDashboard() {
   const navigate = useNavigate();
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
 
   // ── State ────────────────────────────────────────
   const [profile, setProfile]           = useState(null);

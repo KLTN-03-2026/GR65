@@ -142,8 +142,8 @@ export function DashboardLayout({ children, navItems, role, userName, userAvatar
         <div className="p-4 border-t border-gray-100">
           <button onClick={() => {
             if (window.confirm("Bạn có chắc chắn muốn đăng xuất ?")) {
-              localStorage.removeItem("token");
-              localStorage.removeItem("user");
+              sessionStorage.removeItem("token");
+              sessionStorage.removeItem("user");
               // Xóa toàn bộ lịch sử điều hướng để ngăn quay lại trang trước
               window.history.replaceState(null, '', '/login');
               navigate("/login", { replace: true });

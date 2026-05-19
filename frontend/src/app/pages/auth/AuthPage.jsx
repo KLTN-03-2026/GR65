@@ -54,7 +54,7 @@ export function AuthPage() {
 
   // Chặn nút Back sau khi đăng xuất — nếu không có token thì không cho quay lại trang trước
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) {
       // Thêm entry vào history để khi bấm Back sẽ trigger popstate
       window.history.pushState(null, '', window.location.href);
@@ -81,8 +81,8 @@ export function AuthPage() {
         toast.error(data.message || "Đăng nhập Google thất bại!");
         return;
       }
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
+      sessionStorage.setItem("token", data.token);
+      sessionStorage.setItem("user", JSON.stringify(data.user));
       toast.success("Đăng nhập Google thành công!");
       const serverRole = data.user.role?.toLowerCase();
       if (serverRole === "admin") navigate("/admin", { replace: true });
@@ -196,9 +196,9 @@ export function AuthPage() {
           return;
         }
 
-        // Lưu token và thông tin user vào localStorage
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
+        // Lưu token và thông tin user vào sessionStorage
+        sessionStorage.setItem("token", data.token);
+        sessionStorage.setItem("user", JSON.stringify(data.user));
 
         toast.success("Đăng nhập thành công!");
 

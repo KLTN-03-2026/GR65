@@ -59,6 +59,31 @@ async function initializeDatabase() {
     for (const q of alterQueries) {
       try { await pool.request().query(q); } catch (e) { console.warn('Alter query warning:', e.message); }
     }
+
+    // Migration: Cập nhật CHECK constraint trên Jobs.Status để hỗ trợ 'pending' và 'rejected'
+    try {
+      const constraintResult = await pool.request().query(`
+        SELECT con.name
+        FROM sys.check_constraints con
+        JOIN sys.columns col ON con.parent_object_id = col.object_id AND con.parent_column_id = col.column_id
+        WHERE con.parent_object_id = OBJECT_ID('Jobs') AND col.name = 'Status'
+      `);
+      if (constraintResult.recordset.length > 0) {
+        const constraintName = constraintResult.recordset[0].name;
+        // Kiểm tra xem constraint hiện tại đã có 'pending' chưa
+        const defResult = await pool.request()
+          .input('name', sql.NVarChar, constraintName)
+          .query(`SELECT definition FROM sys.check_constraints WHERE name = @name`);
+        const definition = defResult.recordset[0]?.definition || '';
+        if (!definition.includes('pending')) {
+          console.log(`Migrating Jobs.Status constraint: ${constraintName}...`);
+          await pool.request().query(`ALTER TABLE Jobs DROP CONSTRAINT [${constraintName}]`);
+          await pool.request().query(`ALTER TABLE Jobs ADD CONSTRAINT CK_Jobs_Status CHECK (Status IN ('active', 'closed', 'draft', 'pending', 'rejected'))`);
+          console.log('Jobs.Status constraint updated successfully (added pending, rejected).');
+        }
+      }
+    } catch (e) { console.warn('Migration warning (Jobs.Status):', e.message); }
+
     console.log('Database columns ensured.');
 
     // Seed Roles

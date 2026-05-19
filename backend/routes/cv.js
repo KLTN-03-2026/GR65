@@ -103,7 +103,7 @@ router.get('/', async (req, res) => {
       .input('CandidateId', sql.UniqueIdentifier, id)
       .query(`
         SELECT Id, FileName, FileUrl, FileSize, Format,
-               IsDefault, AIParsed, AIScore, AIExtractedJson, UploadedDate
+               IsDefault, AIParsed, AIScore, AIExtractedJson, Status, UploadedDate
         FROM CVs
         WHERE CandidateId = @CandidateId
         ORDER BY IsDefault DESC, UploadedDate DESC
@@ -119,6 +119,7 @@ router.get('/', async (req, res) => {
       aiParsed: !!cv.AIParsed,
       aiScore: parseFloat(cv.AIScore) || 0,
       extractedInfo: cv.AIExtractedJson ? JSON.parse(cv.AIExtractedJson) : null,
+      status: cv.Status || 'approved',
       uploadedDate: cv.UploadedDate,
     }));
 
@@ -166,15 +167,15 @@ router.post('/upload', upload.single('cv'), async (req, res) => {
       .input('Format', sql.NVarChar, format)
       .input('IsDefault', sql.Bit, isFirstCV ? 1 : 0)
       .query(`
-        INSERT INTO CVs (Id, CandidateId, FileName, FileUrl, FileSize, Format, IsDefault, AIParsed, AIScore, UploadedDate)
+        INSERT INTO CVs (Id, CandidateId, FileName, FileUrl, FileSize, Format, IsDefault, AIParsed, AIScore, Status, UploadedDate)
         OUTPUT INSERTED.Id
-        VALUES (NEWID(), @CandidateId, @FileName, @FileUrl, @FileSize, @Format, @IsDefault, 0, 0, GETDATE())
+        VALUES (NEWID(), @CandidateId, @FileName, @FileUrl, @FileSize, @Format, @IsDefault, 0, 0, 'pending', GETDATE())
       `)).recordset[0].Id;
 
     await logActivity(id, 'UPLOAD_CV', 'CV', cvId, `Candidate uploaded CV: ${req.file.originalname}`);
 
     res.json({
-      message: 'Upload CV thành công! AI đang phân tích...',
+      message: 'Upload CV thành công! Hồ sơ đang chờ Admin kiểm duyệt. AI đang phân tích...',
       cv: {
         id: cvId,
         fileName: req.file.originalname,
@@ -305,8 +306,8 @@ router.delete('/:id', async (req, res) => {
         `);
 
       if (activeApps.recordset[0].cnt > 0) {
-        return res.status(400).json({ 
-          message: 'Không thể xóa CV đang trong quy trình ứng tuyển' 
+        return res.status(400).json({
+          message: 'Không thể xóa CV đang trong quy trình ứng tuyển'
         });
       }
     }
@@ -318,7 +319,7 @@ router.delete('/:id', async (req, res) => {
       .query('DELETE FROM CVs WHERE Id = @Id');
 
     await logActivity(userId, 'DELETE_CV', 'CV', cvId, 'Candidate deleted a CV');
-    
+
     const filePath = path.join(__dirname, '..', fileUrl);
     fs.unlink(filePath, () => { });
 

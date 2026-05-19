@@ -2,7 +2,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 export { API_URL };
 
 const request = async (method, endpoint, body = null) => {
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
   const headers = {
     'Content-Type': 'application/json',
   };
@@ -21,8 +21,8 @@ const request = async (method, endpoint, body = null) => {
   if (!response.ok) {
     // Nếu token hết hạn (401), tự động redirect về login
     if (response.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
       window.location.href = '/login';
       return;
     }
@@ -37,7 +37,7 @@ const request = async (method, endpoint, body = null) => {
  * Không set Content-Type header → browser tự thêm boundary cho multipart/form-data
  */
 const upload = async (endpoint, formData) => {
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
   const headers = {};
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -53,8 +53,8 @@ const upload = async (endpoint, formData) => {
 
   if (!response.ok) {
     if (response.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
       window.location.href = '/login';
       return;
     }

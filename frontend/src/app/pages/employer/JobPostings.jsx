@@ -33,6 +33,9 @@ export function JobPostings() {
 
   useEffect(() => {
     fetchJobs();
+    // Auto-polling mỗi 30s để cập nhật trạng thái duyệt từ Admin
+    const interval = setInterval(() => { fetchJobs(); }, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const filtered = jobs.filter((j) => {
@@ -78,7 +81,7 @@ export function JobPostings() {
       setForm(initialForm);
       fetchJobs();
     } catch (err) {
-      toast.error("Lỗi khi lưu bài đăng");
+      toast.error(err.response?.data?.message || "Lỗi khi lưu bài đăng");
     }
   };
 
@@ -110,10 +113,11 @@ export function JobPostings() {
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         {[
+        { label: "Chờ duyệt", value: jobs.filter((j) => j.status === "pending").length, color: "bg-amber-50 text-amber-600" },
         { label: "Đang tuyển", value: jobs.filter((j) => j.status === "active").length, color: "bg-emerald-50 text-emerald-600" },
-        { label: "Đã đóng", value: jobs.filter((j) => j.status === "closed").length, color: "bg-gray-100 text-gray-500" },
+        { label: "Từ chối", value: jobs.filter((j) => j.status === "rejected").length, color: "bg-red-50 text-red-500" },
         { label: "Tổng ứng tuyển", value: jobs.reduce((sum, j) => sum + j.applicants, 0), color: "bg-indigo-50 text-indigo-600" }].
         map((s) =>
         <div key={s.label} className={`${s.color} rounded-2xl p-4 text-center`}>
@@ -128,9 +132,9 @@ export function JobPostings() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm kiếm JD..." className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
         </div>
-        {["all", "active", "closed"].map((s) =>
+        {["all", "pending", "active", "rejected", "closed"].map((s) =>
         <button key={s} onClick={() => setFilterStatus(s)} className={`px-4 py-2.5 rounded-xl text-sm transition-colors ${filterStatus === s ? "bg-indigo-600 text-white" : "bg-white text-gray-500 border border-gray-200 hover:border-gray-300"}`}>
-            {s === "all" ? "Tất cả" : s === "active" ? "Đang tuyển" : "Đã đóng"}
+            {s === "all" ? "Tất cả" : s === "pending" ? "Chờ duyệt" : s === "active" ? "Đang tuyển" : s === "rejected" ? "Từ chối" : "Đã đóng"}
           </button>
         )}
       </div>
@@ -169,9 +173,19 @@ export function JobPostings() {
                      {new Date(job.postedDate).toLocaleDateString('vi-VN')}
                   </td>
                   <td className="px-4 py-4">
-                    <button onClick={() => handleToggleStatus(job)} className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors ${job.status === "active" ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
-                      {job.status === "active" ? <><CheckCircle className="w-3.5 h-3.5" />Đang tuyển</> : <><XCircle className="w-3.5 h-3.5" />Đã đóng</>}
-                    </button>
+                    {job.status === "pending" ? (
+                      <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-amber-50 text-amber-600 border border-amber-200">
+                        <Clock className="w-3.5 h-3.5" /> Chờ duyệt
+                      </span>
+                    ) : job.status === "rejected" ? (
+                      <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-500 border border-red-200">
+                        <XCircle className="w-3.5 h-3.5" /> Bị từ chối
+                      </span>
+                    ) : (
+                      <button onClick={() => handleToggleStatus(job)} className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors ${job.status === "active" ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
+                        {job.status === "active" ? <><CheckCircle className="w-3.5 h-3.5" />Đang tuyển</> : <><XCircle className="w-3.5 h-3.5" />Đã đóng</>}
+                      </button>
+                    )}
                   </td>
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-1">

@@ -66,7 +66,7 @@ export function JobSearch() {
 
   // ── Ứng tuyển ─────────────────────────────────
   const handleApply = async (jobId) => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) {
       toast.error("Vui lòng đăng nhập để ứng tuyển.");
       return;

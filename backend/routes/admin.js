@@ -1032,9 +1032,65 @@ router.put('/jobs/:id/status', async (req, res) => {
   if (!status) return res.status(400).json({ success: false, message: 'Thiếu thông tin status.' });
   try {
     const pool = await poolPromise;
-    const result = await pool.request().input('id', sql.UniqueIdentifier, id).input('status', sql.NVarChar, status).query("UPDATE Jobs SET Status = @status WHERE Id = @id");
-    if (result.rowsAffected[0] === 0) return res.status(404).json({ success: false, message: 'Không tìm thấy tin tuyển dụng.' });
-    
+
+    // 1. Lấy thông tin JD + Employer trước khi cập nhật
+    const jobResult = await pool.request().input('id', sql.UniqueIdentifier, id).query(`
+      SELECT j.Title, j.EmployerId, u.Email as EmployerEmail, e.CompanyName
+      FROM Jobs j
+      JOIN Users u ON j.EmployerId = u.Id
+      JOIN Employers e ON j.EmployerId = e.UserId
+      WHERE j.Id = @id
+    `);
+    if (jobResult.recordset.length === 0) return res.status(404).json({ success: false, message: 'Không tìm thấy tin tuyển dụng.' });
+
+    const job = jobResult.recordset[0];
+
+    // 2. Cập nhật trạng thái
+    await pool.request().input('id', sql.UniqueIdentifier, id).input('status', sql.NVarChar, status).query("UPDATE Jobs SET Status = @status, UpdatedAt = GETDATE() WHERE Id = @id");
+
+    // 3. Gửi email thông báo cho Nhà tuyển dụng
+    const isApproved = status === 'active';
+    const statusText = isApproved ? 'Đã được duyệt ✅' : 'Bị từ chối ❌';
+    const statusColor = isApproved ? '#10b981' : '#ef4444';
+    const emailSubject = isApproved
+      ? `[AI Recruit] Bài đăng "${job.Title}" đã được phê duyệt`
+      : `[AI Recruit] Bài đăng "${job.Title}" đã bị từ chối`;
+
+    const emailHtml = `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f8fafc; border-radius: 12px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); padding: 32px 24px; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 22px;">🔔 Thông báo kiểm duyệt</h1>
+        </div>
+        <div style="padding: 32px 24px;">
+          <p style="color: #374151; font-size: 15px; line-height: 1.6;">
+            Xin chào <strong>${job.CompanyName}</strong>,
+          </p>
+          <p style="color: #374151; font-size: 15px; line-height: 1.6;">
+            Bài đăng tuyển dụng của bạn đã được Quản trị viên xem xét với kết quả:
+          </p>
+          <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0; border-left: 4px solid ${statusColor};">
+            <div style="font-size: 13px; color: #6b7280; margin-bottom: 6px;">Tên vị trí</div>
+            <div style="font-size: 16px; color: #111827; font-weight: 600; margin-bottom: 16px;">${job.Title}</div>
+            <div style="font-size: 13px; color: #6b7280; margin-bottom: 6px;">Trạng thái</div>
+            <div style="display: inline-block; background: ${statusColor}15; color: ${statusColor}; padding: 6px 16px; border-radius: 8px; font-weight: 600; font-size: 14px;">
+              ${statusText}
+            </div>
+          </div>
+          ${isApproved
+            ? '<p style="color: #374151; font-size: 15px; line-height: 1.6;">Bài đăng của bạn hiện đã hiển thị công khai trên hệ thống. Ứng viên có thể tìm thấy và ứng tuyển vào vị trí này ngay bây giờ.</p>'
+            : '<p style="color: #374151; font-size: 15px; line-height: 1.6;">Bài đăng của bạn không đáp ứng tiêu chuẩn nội dung của hệ thống. Vui lòng kiểm tra lại nội dung và đăng lại tin tuyển dụng mới phù hợp hơn.</p>'
+          }
+          <p style="color: #9ca3af; font-size: 13px; margin-top: 24px;">
+            Đây là email tự động từ hệ thống AI Recruit. Vui lòng không trả lời email này.
+          </p>
+        </div>
+      </div>
+    `;
+
+    // Gửi email (không block response nếu gửi thất bại)
+    sendEmail(job.EmployerEmail, emailSubject, `Bài đăng "${job.Title}" ${statusText}`, emailHtml)
+      .catch(err => console.error('Lỗi gửi email kiểm duyệt JD:', err.message));
+
     await logActivity(req.user.id, 'MODERATE_JOB', 'Job', id, `Changed job status to ${status}`);
     res.json({ success: true, message: `Trạng thái tin tuyển dụng đã được cập nhật thành ${status}` });
   } catch (err) {
@@ -1341,13 +1397,77 @@ router.get('/cvs/:id', async (req, res) => {
  */
 router.put('/cvs/:id/status', async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, reason } = req.body;
+  if (!status) return res.status(400).json({ success: false, message: 'Thiếu thông tin status.' });
   try {
     const pool = await poolPromise;
-    const result = await pool.request().input('id', sql.UniqueIdentifier, id).input('status', sql.NVarChar, status).query("UPDATE CVs SET Status = @status WHERE Id = @id");
-    if (result.rowsAffected[0] === 0) return res.status(404).json({ success: false, message: 'Không tìm thấy CV.' });
-    
-    await logActivity(req.user.id, 'MODERATE_CV', 'CV', id, `Set CV status to ${status}`);
+
+    // 1. Lấy thông tin CV + Ứng viên
+    const cvResult = await pool.request().input('id', sql.UniqueIdentifier, id).query(`
+      SELECT cv.FileName, cv.CandidateId, u.Email as CandidateEmail, c.FullName as CandidateName
+      FROM CVs cv
+      JOIN Candidates c ON cv.CandidateId = c.UserId
+      JOIN Users u ON c.UserId = u.Id
+      WHERE cv.Id = @id
+    `);
+    if (cvResult.recordset.length === 0) return res.status(404).json({ success: false, message: 'Không tìm thấy CV.' });
+
+    const cv = cvResult.recordset[0];
+
+    // 2. Cập nhật trạng thái
+    await pool.request().input('id', sql.UniqueIdentifier, id).input('status', sql.NVarChar, status).query("UPDATE CVs SET Status = @status WHERE Id = @id");
+
+    // 3. Gửi email thông báo cho Ứng viên
+    const isApproved = status === 'approved';
+    const statusText = isApproved ? 'Đã được duyệt ✅' : 'Bị từ chối ❌';
+    const statusColor = isApproved ? '#10b981' : '#ef4444';
+    const emailSubject = isApproved
+      ? `[AI Recruit] Hồ sơ CV "${cv.FileName}" đã được phê duyệt`
+      : `[AI Recruit] Hồ sơ CV "${cv.FileName}" đã bị từ chối`;
+
+    const reasonHtml = (!isApproved && reason)
+      ? `<div style="background: #fef2f2; border-radius: 8px; padding: 14px; margin: 16px 0; border-left: 3px solid #ef4444;">
+           <div style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">Lý do từ chối</div>
+           <div style="font-size: 14px; color: #991b1b;">${reason}</div>
+         </div>`
+      : '';
+
+    const emailHtml = `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f8fafc; border-radius: 12px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); padding: 32px 24px; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 22px;">📄 Kết quả kiểm duyệt hồ sơ</h1>
+        </div>
+        <div style="padding: 32px 24px;">
+          <p style="color: #374151; font-size: 15px; line-height: 1.6;">
+            Xin chào <strong>${cv.CandidateName}</strong>,
+          </p>
+          <p style="color: #374151; font-size: 15px; line-height: 1.6;">
+            Hồ sơ năng lực (CV) bạn đã tải lên đã được Quản trị viên xem xét với kết quả:
+          </p>
+          <div style="background: white; border-radius: 10px; padding: 20px; margin: 20px 0; border-left: 4px solid ${statusColor};">
+            <div style="font-size: 13px; color: #6b7280; margin-bottom: 6px;">Tên file</div>
+            <div style="font-size: 16px; color: #111827; font-weight: 600; margin-bottom: 16px;">${cv.FileName}</div>
+            <div style="font-size: 13px; color: #6b7280; margin-bottom: 6px;">Trạng thái</div>
+            <div style="display: inline-block; background: ${statusColor}15; color: ${statusColor}; padding: 6px 16px; border-radius: 8px; font-weight: 600; font-size: 14px;">
+              ${statusText}
+            </div>
+          </div>
+          ${reasonHtml}
+          ${isApproved
+            ? '<p style="color: #374151; font-size: 15px; line-height: 1.6;">CV của bạn hiện đã được kích hoạt. Bạn có thể sử dụng hồ sơ này để ứng tuyển vào các vị trí tuyển dụng trên hệ thống.</p>'
+            : '<p style="color: #374151; font-size: 15px; line-height: 1.6;">Vui lòng kiểm tra lại nội dung và tải lên hồ sơ mới phù hợp với tiêu chuẩn của hệ thống.</p>'
+          }
+          <p style="color: #9ca3af; font-size: 13px; margin-top: 24px;">
+            Đây là email tự động từ hệ thống AI Recruit. Vui lòng không trả lời email này.
+          </p>
+        </div>
+      </div>
+    `;
+
+    sendEmail(cv.CandidateEmail, emailSubject, `CV "${cv.FileName}" ${statusText}`, emailHtml)
+      .catch(err => console.error('Lỗi gửi email kiểm duyệt CV:', err.message));
+
+    await logActivity(req.user.id, 'MODERATE_CV', 'CV', id, `Set CV status to ${status}${reason ? '. Reason: ' + reason : ''}`);
     res.json({ success: true, message: `Trạng thái CV đã được cập nhật thành ${status}` });
   } catch (err) {
     console.error('Error in PUT /admin/cvs/:id/status:', err);

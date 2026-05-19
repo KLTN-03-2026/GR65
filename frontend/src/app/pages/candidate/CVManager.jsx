@@ -33,7 +33,7 @@ export function CVManager() {
   const fileInputRef = useRef(null);
   const pollTimers   = useRef({});
 
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
   // ── Fetch danh sách CV ─────────────────────────
@@ -49,7 +49,12 @@ export function CVManager() {
     }
   }, []); // eslint-disable-line
 
-  useEffect(() => { fetchCVs(); }, [fetchCVs]);
+  useEffect(() => {
+    fetchCVs();
+    // Auto-polling mỗi 30s để cập nhật trạng thái duyệt từ Admin
+    const interval = setInterval(() => { fetchCVs(); }, 30000);
+    return () => clearInterval(interval);
+  }, [fetchCVs]);
 
   // Tự động chọn CV đầu tiên
   useEffect(() => {
@@ -347,6 +352,21 @@ export function CVManager() {
                         {cv.isDefault && (
                           <span className="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-full flex-shrink-0">
                             Mặc định
+                          </span>
+                        )}
+                        {cv.status === 'pending' && (
+                          <span className="text-xs bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-full flex-shrink-0 flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> Chờ duyệt
+                          </span>
+                        )}
+                        {cv.status === 'rejected' && (
+                          <span className="text-xs bg-red-50 text-red-500 border border-red-200 px-2 py-0.5 rounded-full flex-shrink-0 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" /> Bị từ chối
+                          </span>
+                        )}
+                        {cv.status === 'approved' && (
+                          <span className="text-xs bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded-full flex-shrink-0 flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" /> Đã duyệt
                           </span>
                         )}
                       </div>
